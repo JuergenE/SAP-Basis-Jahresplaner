@@ -171,3 +171,5 @@
 [2026-02-04T18:40:14.047Z] [juergen] ACTIVITY_CREATE: {"sid_id":14,"type_id":"installation","start_date":"2026-02-04","duration":1}
 [2026-02-04T19:18:32.324Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":19,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
 [2026-02-04T19:18:45.940Z] [juergen] ACTIVITY_CREATE: {"sid_id":7,"type_id":"installation","start_date":"2026-02-04","duration":1}
+[2026-02-07T13:41:05.400Z] [SYSTEM] STARTUP: {"version":"1.0.0"}
+[2026-02-07T15:22:13.633Z] [SYSTEM] STARTUP: {"version":"1.0.0"}
