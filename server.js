@@ -378,12 +378,14 @@ const initDatabase = () => {
 };
 
 initDatabase();
+console.log(`✓ SAP Basis Jahresplaner Backend starting - Version: ${APP_VERSION}`);
+logAction(null, 'SYSTEM', 'STARTUP', { version: APP_VERSION });
 
 // =========================================================================
 // LOGGING HELPER
 // =========================================================================
 
-const logAction = (userId, username, action, details = null) => {
+function logAction(userId, username, action, details = null) {
   try {
     const timestamp = new Date().toISOString();
     const logLine = `[${timestamp}] [${username || 'SYSTEM'}] ${action}: ${details ? JSON.stringify(details) : ''}\n`;
@@ -405,7 +407,7 @@ const logAction = (userId, username, action, details = null) => {
   } catch (e) {
     console.error('Logging error:', e);
   }
-};
+}
 
 // =========================================================================
 // AUTHENTICATION MIDDLEWARE
@@ -498,7 +500,8 @@ app.post('/api/auth/login', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role
-      }
+      },
+      version: APP_VERSION
     });
   } catch (error) {
     console.error('Login error:', error);

@@ -721,6 +721,7 @@
           setLoginError('');
           const userData = await api.login(username, password);
           setUser(userData);
+          if (userData.version) setAppVersion(userData.version);
           await loadData();
         } catch (error) {
           setLoginError(error.message);
@@ -2025,8 +2026,11 @@
       // Loading state
       if (loading) {
         return (
-          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center">
             <div className="text-xl text-gray-600">Lade...</div>
+            <div className="text-center text-gray-400 text-xs mt-8">
+              SAP Basis Jahresplaner • Optima Solutions GmbH
+            </div>
           </div>
         );
       }
@@ -2034,7 +2038,7 @@
       // Login form
       if (!user) {
         return (
-          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
               <div className="flex items-center gap-3 mb-6">
                 <CalendarIcon />
@@ -2077,6 +2081,9 @@
                   Anmelden
                 </button>
               </form>
+            </div>
+            <div className="text-center text-gray-500 text-xs mt-8">
+              SAP Basis Jahresplaner • {appVersion && `Version ${appVersion} • `}Optima Solutions GmbH
             </div>
           </div>
         );
