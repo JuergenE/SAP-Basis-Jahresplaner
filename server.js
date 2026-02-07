@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3232;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Read version from package.json
-let APP_VERSION = '1.0.0';
+let APP_VERSION = '0.1.3';
 try {
   const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
   APP_VERSION = packageJson.version || '1.0.0';
@@ -435,7 +435,8 @@ const authenticate = (req, res, next) => {
   req.user = {
     id: session.user_id,
     username: session.username,
-    role: session.role
+    role: session.role,
+    version: APP_VERSION
   };
   next();
 };
@@ -499,7 +500,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        version: APP_VERSION
       },
       version: APP_VERSION
     });
@@ -566,6 +568,8 @@ app.get('/api/settings', authenticate, (req, res) => {
   settings.forEach(s => {
     settingsObj[s.key] = s.value;
   });
+  // Log the response for debugging missing version
+  logAction(req.user.id, req.user.username, 'GET_SETTINGS', { version: settingsObj.version });
   res.json(settingsObj);
 });
 
