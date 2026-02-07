@@ -1,0 +1,173 @@
+[2026-01-28T18:11:07.870Z] [juergen] ACTIVITY_CREATE: {"sid_id":7,"type_id":"installation","start_date":"2026-01-15","duration":1}
+[2026-01-28T18:11:21.224Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":19,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-01-28T18:11:36.710Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":19,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-01-28T18:44:56.738Z] [juergen] ACTIVITY_CREATE: {"sid_id":6,"type_id":"installation","start_date":"2026-01-15","duration":1}
+[2026-01-28T18:48:46.943Z] [juergen] ACTIVITY_CREATE: {"sid_id":7,"type_id":"installation","start_date":"2026-01-28","duration":1}
+[2026-01-29T15:46:59.955Z] [juergen] ACTIVITY_CREATE: {"sid_id":5,"type_id":"installation","start_date":"2026-01-29","duration":1}
+[2026-01-31T15:49:16.779Z] [juergen] ACTIVITY_CREATE: {"sid_id":13,"type_id":"installation","start_date":"2026-01-31","duration":1}
+[2026-01-31T15:49:17.322Z] [juergen] ACTIVITY_CREATE: {"sid_id":13,"type_id":"installation","start_date":"2026-01-31","duration":1}
+[2026-01-31T15:49:21.078Z] [juergen] ACTIVITY_CREATE: {"sid_id":14,"type_id":"installation","start_date":"2026-01-31","duration":1}
+[2026-01-31T15:49:21.250Z] [juergen] ACTIVITY_CREATE: {"sid_id":14,"type_id":"installation","start_date":"2026-01-31","duration":1}
+[2026-01-31T15:49:25.231Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":25,"name":"Sub-Aktivität","start_date":"2026-01-31","duration":1}
+[2026-01-31T15:49:26.790Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":25,"name":"Sub-Aktivität","start_date":"2026-01-31","duration":1}
+[2026-01-31T15:49:27.055Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":25,"name":"Sub-Aktivität","start_date":"2026-01-31","duration":1}
+[2026-02-01T18:05:35.297Z] [juergen] TEAM_MEMBER_CREATE: {"name":"Jürgen Eifridt","abbreviation":"JE"}
+[2026-02-01T18:21:22.046Z] [juergen] TEAM_MEMBER_CREATE: {"name":"Peter Wilhelm","abbreviation":"PW"}
+[2026-02-01T18:21:26.821Z] [juergen] TEAM_MEMBER_DELETE: {"id":"1"}
+[2026-02-01T18:27:33.116Z] [juergen] TEAM_MEMBER_CREATE: {"name":"Jürgen Eifridt","abbreviation":"JE"}
+[2026-02-01T18:27:41.758Z] [juergen] TEAM_MEMBER_CREATE: {"name":"Sven Krämer","abbreviation":"SK"}
+[2026-02-01T18:27:55.313Z] [juergen] TEAM_MEMBER_CREATE: {"name":"Patrick Stegmüller","abbreviation":"PS"}
+[2026-02-02T17:16:53.888Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:54.656Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:54.793Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:54.940Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:55.086Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:55.933Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:57.043Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:57.580Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:16:58.027Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:03.658Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:10.508Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:11.310Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:11.906Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:12.087Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:13.811Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:14.706Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:14.841Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:15.680Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:17.397Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:17.851Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:20.396Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:20.684Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:20.935Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:23.498Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:23.896Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:24.088Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:25.169Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:25.886Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:27.018Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:27.540Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:36.768Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:36.925Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:37.186Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:37.686Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:37.730Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:37.780Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:37.829Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:37.880Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:37.930Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T17:17:39.017Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.517Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.562Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.613Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.663Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.712Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.762Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.812Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.861Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.912Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:39.962Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T17:17:41.142Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:41.649Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:41.692Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:41.742Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:41.792Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:41.841Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:41.893Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T17:17:43.124Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.632Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.680Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.724Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.774Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.823Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.877Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.923Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:43.974Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.026Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.074Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.124Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.174Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.224Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.274Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.323Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.373Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.424Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.474Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.523Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.574Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.623Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.673Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:44.724Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.052Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.251Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.752Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.811Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.848Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.897Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.947Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:46.998Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T17:17:47.047Z] [juergen] TEAM_MEMBER_UPDATE: {"id":"5"}
+[2026-02-02T18:56:41.525Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:42.007Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:42.254Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:42.433Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:42.652Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:42.831Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:43.153Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:44.756Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:45.021Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"2"}
+[2026-02-02T18:56:46.612Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T18:56:46.819Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T18:56:47.136Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T18:56:47.520Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"4"}
+[2026-02-02T18:56:51.346Z] [teamlead] TEAM_MEMBER_UPDATE: {"id":"3"}
+[2026-02-02T19:41:39.072Z] [teamlead] ACTIVITY_CREATE: {"sid_id":15,"type_id":"installation","start_date":"2026-02-02","duration":1}
+[2026-02-02T19:41:46.905Z] [teamlead] ACTIVITY_CREATE: {"sid_id":16,"type_id":"installation","start_date":"2026-02-02","duration":1}
+[2026-02-02T19:41:55.785Z] [teamlead] ACTIVITY_CREATE: {"sid_id":17,"type_id":"installation","start_date":"2026-02-02","duration":1}
+[2026-02-02T19:42:11.670Z] [teamlead] ACTIVITY_CREATE: {"sid_id":15,"type_id":"installation","start_date":"2026-02-02","duration":1}
+[2026-02-02T19:42:19.635Z] [teamlead] ACTIVITY_CREATE: {"sid_id":16,"type_id":"installation","start_date":"2026-02-02","duration":1}
+[2026-02-03T12:11:17.399Z] [teamlead] ACTIVITY_CREATE: {"sid_id":16,"type_id":"installation","start_date":"2026-02-03","duration":1}
+[2026-02-03T12:11:18.712Z] [teamlead] ACTIVITY_CREATE: {"sid_id":16,"type_id":"installation","start_date":"2026-02-03","duration":1}
+[2026-02-03T12:11:42.766Z] [teamlead] SUBACTIVITY_CREATE: {"activity_id":33,"name":"Sub-Aktivität","start_date":"2026-02-03","duration":1}
+[2026-02-03T12:11:44.165Z] [teamlead] SUBACTIVITY_CREATE: {"activity_id":33,"name":"Sub-Aktivität","start_date":"2026-02-03","duration":1}
+[2026-02-03T12:11:44.713Z] [teamlead] SUBACTIVITY_CREATE: {"activity_id":33,"name":"Sub-Aktivität","start_date":"2026-02-03","duration":1}
+[2026-02-03T12:19:10.679Z] [teamlead] ACTIVITY_CREATE: {"sid_id":15,"type_id":"installation","start_date":"2026-02-03","duration":1}
+[2026-02-04T16:26:10.746Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"2","date":"0002-05-22","label":"Wartungssonntag II"}
+[2026-02-04T16:26:10.854Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"2","date":"","label":"Wartungssonntag II"}
+[2026-02-04T16:26:21.078Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"2","date":"0002-05-02","label":"Wartungssonntag II"}
+[2026-02-04T16:26:21.327Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"2","date":"","label":"Wartungssonntag II"}
+[2026-02-04T16:26:29.132Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"2","date":"2026-03-04","label":"Wartungssonntag II"}
+[2026-02-04T16:26:29.365Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"2","date":"2026-04-04","label":"Wartungssonntag II"}
+[2026-02-04T16:26:31.231Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"2","date":"2026-04-24","label":"Wartungssonntag II"}
+[2026-02-04T16:26:34.931Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-03-04","label":"Wartungssonntag III"}
+[2026-02-04T16:26:35.080Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-04-04","label":"Wartungssonntag III"}
+[2026-02-04T16:26:35.236Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-05-04","label":"Wartungssonntag III"}
+[2026-02-04T16:26:35.559Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-06-04","label":"Wartungssonntag III"}
+[2026-02-04T16:26:35.705Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-07-04","label":"Wartungssonntag III"}
+[2026-02-04T16:26:36.015Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-08-04","label":"Wartungssonntag III"}
+[2026-02-04T16:26:36.165Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-09-04","label":"Wartungssonntag III"}
+[2026-02-04T16:26:37.262Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-09-17","label":"Wartungssonntag III"}
+[2026-02-04T16:26:43.762Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-08-17","label":"Wartungssonntag III"}
+[2026-02-04T16:26:43.912Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-07-17","label":"Wartungssonntag III"}
+[2026-02-04T16:26:45.504Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"3","date":"2026-07-22","label":"Wartungssonntag III"}
+[2026-02-04T16:26:47.236Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-03-04","label":"Wartungssonntag IV"}
+[2026-02-04T16:26:47.402Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-04-04","label":"Wartungssonntag IV"}
+[2026-02-04T16:26:47.561Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-05-04","label":"Wartungssonntag IV"}
+[2026-02-04T16:26:47.731Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-06-04","label":"Wartungssonntag IV"}
+[2026-02-04T16:26:48.011Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-07-04","label":"Wartungssonntag IV"}
+[2026-02-04T16:26:48.358Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-08-04","label":"Wartungssonntag IV"}
+[2026-02-04T16:26:48.514Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-09-04","label":"Wartungssonntag IV"}
+[2026-02-04T16:26:50.535Z] [juergen] MAINTENANCE_SUNDAY_UPDATE: {"id":"4","date":"2026-09-15","label":"Wartungssonntag IV"}
+[2026-02-04T17:44:19.809Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:45:14.323Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:45:52.421Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:46:38.949Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:47:05.965Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:47:31.190Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:48:12.536Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:48:42.508Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:49:42.117Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T17:50:14.488Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":14,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T18:40:14.047Z] [juergen] ACTIVITY_CREATE: {"sid_id":14,"type_id":"installation","start_date":"2026-02-04","duration":1}
+[2026-02-04T19:18:32.324Z] [juergen] SUBACTIVITY_CREATE: {"activity_id":19,"name":"Sub-Aktivität","start_date":"2026-01-15","duration":1}
+[2026-02-04T19:18:45.940Z] [juergen] ACTIVITY_CREATE: {"sid_id":7,"type_id":"installation","start_date":"2026-02-04","duration":1}
