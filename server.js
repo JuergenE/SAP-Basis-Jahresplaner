@@ -32,7 +32,7 @@ try {
 }
 
 // Middleware
-const LOG_FILE = path.join(__dirname, 'server.log');
+const LOG_FILE = path.join(defaultDataDir, 'server.log');
 const MAX_LOG_SIZE = 1024 * 1024; // 1MB
 
 app.use(cookieParser());
@@ -68,16 +68,7 @@ app.use('/api/auth/login', loginLimiter);
 // CORS Configuration
 // Restrict to same-origin for security (set explicit origins if needed for network access)
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (same-origin, mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-    // Allow localhost requests (same server)
-    const allowedOrigins = ['http://localhost:3232', 'https://localhost:3232'];
-    // For network access, add your IP/hostname here:
-    // allowedOrigins.push('http://192.168.1.100:3232');
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error('CORS not allowed'), false);
-  },
+  origin: true, // Allow all origins in production to support access via IP/Portainer
   credentials: true
 }));
 
