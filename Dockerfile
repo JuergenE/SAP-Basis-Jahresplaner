@@ -14,9 +14,9 @@ RUN npm ci
 # Create data directory here (so we can copy it with permissions later)
 RUN mkdir -p data
 
-# Stage 2: Runner (Hardened Node.js image)
-# This image likely lacks a shell (/bin/sh), so we cannot use RUN commands efficiently.
-FROM dhi.io/node:22
+# Stage 2: Runner (Lightweight Node.js image)
+# Switch to official public image to avoid authorization errors
+FROM node:22-bullseye-slim
 
 # Set production environment
 ENV NODE_ENV=production
