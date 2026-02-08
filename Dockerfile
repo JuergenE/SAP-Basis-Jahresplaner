@@ -16,7 +16,8 @@ RUN mkdir -p data
 
 # Stage 2: Runner (Lightweight Node.js image)
 # Switch to official public image to avoid authorization errors
-FROM node:22-bullseye-slim
+# Using Bookworm to match the builder stage and avoid glibc version mismatches
+FROM node:22-bookworm-slim
 
 # Set production environment
 ENV NODE_ENV=production
