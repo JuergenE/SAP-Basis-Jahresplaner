@@ -31,6 +31,9 @@ try {
   console.warn('Could not read version from package.json, using default:', APP_VERSION);
 }
 
+// Directory Configuration
+const defaultDataDir = process.env.NODE_ENV === 'production' ? '/app/data' : __dirname;
+
 // Middleware
 const LOG_FILE = path.join(defaultDataDir, 'server.log');
 const MAX_LOG_SIZE = 1024 * 1024; // 1MB
@@ -82,7 +85,6 @@ app.use(express.static(__dirname));
 // =========================================================================
 
 // Use DB_PATH env var if set, otherwise default to local or /app/data based on NODE_ENV
-const defaultDataDir = process.env.NODE_ENV === 'production' ? '/app/data' : __dirname;
 const dbPath = process.env.DB_PATH || path.join(defaultDataDir, 'sap-planner.db');
 const db = new Database(dbPath);
 
