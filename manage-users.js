@@ -13,7 +13,8 @@ const bcrypt = require('bcryptjs');
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'sap-planner.db'));
+const defaultDataDir = process.env.NODE_ENV === 'production' ? '/app/data' : __dirname;
+const db = new Database(path.join(defaultDataDir, 'sap-planner.db'));
 
 const command = process.argv[2];
 
