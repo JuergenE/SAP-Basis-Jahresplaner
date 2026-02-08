@@ -1,0 +1,45 @@
+# Stage 1: Builder (Build native dependencies)
+# Using Debian-based node image which includes build tools (python3, make, g++, etc.)
+FROM node:22-bookworm AS builder
+
+WORKDIR /src
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies (including dev/build deps)
+# npm ci ensures clean install from lockfile and builds native modules like better-sqlite3
+RUN npm ci
+
+# Create data directory here (so we can copy it with permissions later)
+RUN mkdir -p data
+
+# Stage 2: Runner (Hardened Node.js image)
+# This image likely lacks a shell (/bin/sh), so we cannot use RUN commands efficiently.
+FROM dhi.io/node:22
+
+# Set production environment
+ENV NODE_ENV=production
+ENV PORT=3232
+ENV HOST=0.0.0.0
+
+WORKDIR /app
+
+# Switch to non-root user for security (UID 1000 is standard for 'node' user)
+USER node
+
+# Copy data directory from builder with correct ownership
+COPY --from=builder --chown=node:node /src/data ./data
+
+# Copy installed node_modules from builder
+COPY --from=builder --chown=node:node /src/node_modules ./node_modules
+
+# Copy application source code
+# Since we are restricted to specific files based on .dockerignore, we can copy .
+COPY --chown=node:node . .
+
+# Expose the application port
+EXPOSE 3232
+
+# Start the server directly
+CMD ["node", "server.js"]

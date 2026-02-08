@@ -1,0 +1,16 @@
+services:
+  sap-planner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sap-planner:latest
+    container_name: sap-planner
+    ports:
+      - "3232:3232"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3232
+      - HOST=0.0.0.0
