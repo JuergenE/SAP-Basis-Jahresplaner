@@ -8,9 +8,12 @@ services:
     ports:
       - "3232:3232"
     volumes:
-      - ./data:/app/data
+      - sap-planner-data:/app/data
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3232
       - HOST=0.0.0.0
+
+volumes:
+  sap-planner-data:
