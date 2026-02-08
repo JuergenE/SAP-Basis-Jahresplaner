@@ -104,26 +104,34 @@
         const headers = { 'Content-Type': 'application/json', ...options.headers };
         // Authorization header is no longer needed (cookie is sent automatically)
 
-        const response = await fetch(`${this.baseUrl}${endpoint}`, {
-          ...options,
-          headers,
-          credentials: 'include' // Required for cookies with CORS
-        });
-        const data = await response.json();
+        const url = `${this.baseUrl}${endpoint}`;
+        console.log(`[API] Fetching: ${url}`, options);
 
-        if (response.status === 401) {
-          // Session expired or not authenticated
-          if (!endpoint.includes('/login')) {
-            throw new Error('SESSION_EXPIRED');
+        try {
+          const response = await fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include'
+          });
+
+          const data = await response.json();
+          console.log(`[API] Response from ${endpoint}:`, data);
+
+          if (response.status === 401) {
+            if (!endpoint.includes('/login')) {
+              throw new Error('SESSION_EXPIRED');
+            }
+            throw new Error(data.error || 'Ungültige Anmeldedaten');
           }
-          // For login attempts, throw the actual error message
-          throw new Error(data.error || 'Ungültige Anmeldedaten');
-        }
 
-        if (!response.ok) {
-          throw new Error(data.error || 'API Fehler');
+          if (!response.ok) {
+            throw new Error(data.error || 'API Fehler');
+          }
+          return data;
+        } catch (error) {
+          console.error(`[API] Error on ${endpoint}:`, error);
+          throw error;
         }
-        return data;
       }
 
       // Auth

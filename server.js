@@ -40,20 +40,11 @@ const MAX_LOG_SIZE = 1024 * 1024; // 1MB
 
 app.use(cookieParser());
 
-// Security Headers via Helmet
-app.use(helmet({
-  hsts: false, // Disable HSTS to allow HTTP connections via IP
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://unpkg.com", "https://cdnjs.cloudflare.com", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-      fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", "http://*", "https://*"], // Broaden to allow API connections via IP
-    }
-  }
-}));
+// Security Headers via Helmet - Disabled temporarily to bypass HSTS/CSP issues in Portainer/IP environments
+// app.use(helmet({
+//   hsts: false, 
+//   contentSecurityPolicy: { ... }
+// }));
 
 // Rate Limiting
 const apiLimiter = rateLimit({
