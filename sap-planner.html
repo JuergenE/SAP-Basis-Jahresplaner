@@ -2124,7 +2124,7 @@
                 </div>
                 <div className="flex gap-2 flex-wrap header-controls items-center">
                   <span className="text-sm text-gray-600">
-                    {user.username} ({user.role === 'admin' ? 'Administrator' : 'Benutzer'})
+                    {user.username} ({user.role === 'teamlead' ? 'Teamleiter' : user.role === 'admin' ? 'Administrator' : 'Benutzer'})
                   </span>
                   <button onClick={() => setShowPasswordDialog(true)} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded">
                     🔑 Passwort
