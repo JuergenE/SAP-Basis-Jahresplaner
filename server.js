@@ -1379,7 +1379,7 @@ app.put('/api/maintenance-sundays/:id', authenticate, requireAdmin, (req, res) =
 // =========================================================================
 
 // Export all data as JSON backup
-app.get('/api/backup/export', authenticate, requireTeamLead, (req, res) => {
+app.get('/api/backup/export', authenticate, requireAdmin, (req, res) => {
   try {
     // Get settings
     const settings = db.prepare('SELECT key, value FROM settings').all();
@@ -1454,7 +1454,7 @@ app.get('/api/backup/export', authenticate, requireTeamLead, (req, res) => {
 });
 
 // Import data from JSON backup (replaces existing data)
-app.post('/api/backup/import', authenticate, requireTeamLead, (req, res) => {
+app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
   const backup = req.body;
 
   // Validate backup structure
