@@ -214,6 +214,21 @@
           body: JSON.stringify({ date, label })
         });
       }
+
+      // Backup/Restore (Teamlead only)
+      async exportBackup() {
+        const response = await fetch(`${this.baseUrl}/api/backup/export`, {
+          credentials: 'include'
+        });
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: 'Backup-Export fehlgeschlagen' }));
+          throw new Error(error.error || 'Backup-Export fehlgeschlagen');
+        }
+        return response.json();
+      }
+      async importBackup(data) {
+        return this.request('/api/backup/import', { method: 'POST', body: JSON.stringify(data) });
+      }
     }
 
     const api = new ApiClient();
@@ -3049,6 +3064,108 @@
                     </tbody>
                   </table>
                 </div>
+
+                {/* Backup/Restore Section - Teamlead only */}
+                {canManageTeam && (
+                  <div className="mt-8 pt-6 border-t border-gray-200">
+                    <h3 className="text-lg font-semibold text-gray-700 mb-4">💾 Backup / Wiederherstellung</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Erstellen Sie ein vollständiges Backup aller Daten (Einstellungen, Aktivitätstypen, Teammitglieder, Landschaften, Aktivitäten).
+                      Das Backup enthält <strong>keine</strong> Benutzerdaten (Passwörter/Sessions).
+                    </p>
+
+                    <div className="flex flex-wrap gap-4">
+                      {/* Export Button */}
+                      <button
+                        onClick={async () => {
+                          try {
+                            const backup = await api.exportBackup();
+                            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `sap-planner-backup-${new Date().toISOString().split('T')[0]}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                            alert('✅ Backup erfolgreich erstellt und heruntergeladen.');
+                          } catch (error) {
+                            alert('❌ Fehler beim Erstellen des Backups: ' + error.message);
+                          }
+                        }}
+                        className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
+                      >
+                        📥 Backup exportieren
+                      </button>
+
+                      {/* Import Button */}
+                      <label className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium cursor-pointer flex items-center gap-2">
+                        📤 Backup importieren
+                        <input
+                          type="file"
+                          accept=".json"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files[0];
+                            if (!file) return;
+
+                            try {
+                              const text = await file.read ? await file.text() : await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result);
+                                reader.onerror = reject;
+                                reader.readAsText(file);
+                              });
+                              const backup = JSON.parse(text);
+
+                              if (!backup.version) {
+                                alert('❌ Ungültige Backup-Datei: Version fehlt');
+                                e.target.value = '';
+                                return;
+                              }
+
+                              const confirmed = confirm(
+                                `⚠️ ACHTUNG: Dieser Import wird alle bestehenden Daten ÜBERSCHREIBEN!\n\n` +
+                                `Backup-Version: ${backup.version}\n` +
+                                `Export-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n` +
+                                `Landschaften: ${backup.landscapes?.length || 0}\n` +
+                                `Teammitglieder: ${backup.teamMembers?.length || 0}\n` +
+                                `Aktivitätstypen: ${backup.activityTypes?.length || 0}\n\n` +
+                                `Möchten Sie fortfahren?`
+                              );
+
+                              if (!confirmed) {
+                                e.target.value = '';
+                                return;
+                              }
+
+                              const result = await api.importBackup(backup);
+                              alert(
+                                `✅ Backup erfolgreich importiert!\n\n` +
+                                `Landschaften: ${result.stats.landscapes}\n` +
+                                `SIDs: ${result.stats.sids}\n` +
+                                `Aktivitäten: ${result.stats.activities}\n` +
+                                `Sub-Aktivitäten: ${result.stats.subActivities}\n` +
+                                `Teammitglieder: ${result.stats.teamMembers}\n` +
+                                `Aktivitätstypen: ${result.stats.activityTypes}\n\n` +
+                                `Die Seite wird jetzt neu geladen.`
+                              );
+                              window.location.reload();
+                            } catch (error) {
+                              alert('❌ Fehler beim Import: ' + error.message);
+                            }
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    </div>
+
+                    <p className="text-xs text-gray-500 mt-3">
+                      💡 Tipp: Erstellen Sie regelmäßig Backups, besonders vor größeren Änderungen.
+                    </p>
+                  </div>
+                )}
               </div>
             )
           }

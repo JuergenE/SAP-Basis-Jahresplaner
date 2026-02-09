@@ -1375,6 +1375,266 @@ app.put('/api/maintenance-sundays/:id', authenticate, requireAdmin, (req, res) =
 });
 
 // =========================================================================
+// BACKUP/RESTORE API (Teamlead only)
+// =========================================================================
+
+// Export all data as JSON backup
+app.get('/api/backup/export', authenticate, requireTeamLead, (req, res) => {
+  try {
+    // Get settings
+    const settings = db.prepare('SELECT key, value FROM settings').all();
+    const settingsObj = {};
+    settings.forEach(s => settingsObj[s.key] = s.value);
+
+    // Get activity types
+    const activityTypes = db.prepare('SELECT * FROM activity_types ORDER BY sort_order').all();
+
+    // Get team members
+    const teamMembers = db.prepare('SELECT * FROM team_members ORDER BY sort_order').all();
+
+    // Get maintenance sundays
+    const maintenanceSundays = db.prepare('SELECT * FROM maintenance_sundays ORDER BY id').all();
+
+    // Get landscapes with full hierarchy
+    const landscapes = db.prepare('SELECT * FROM landscapes ORDER BY sort_order').all();
+    const landscapesWithData = landscapes.map(landscape => {
+      const sids = db.prepare('SELECT * FROM sids WHERE landscape_id = ? ORDER BY sort_order').all(landscape.id);
+      const sidsWithActivities = sids.map(sid => {
+        const activities = db.prepare('SELECT * FROM activities WHERE sid_id = ? ORDER BY start_date').all(sid.id);
+        const activitiesWithSubs = activities.map(activity => {
+          const subActivities = db.prepare('SELECT * FROM sub_activities WHERE activity_id = ? ORDER BY sort_order').all(activity.id);
+          return {
+            ...activity,
+            type: activity.type_id,
+            startDate: activity.start_date,
+            includesWeekend: !!activity.includes_weekend,
+            teamMemberId: activity.team_member_id,
+            subActivities: subActivities.map(sa => ({
+              ...sa,
+              startDate: sa.start_date,
+              includesWeekend: !!sa.includes_weekend,
+              teamMemberId: sa.team_member_id
+            }))
+          };
+        });
+        return {
+          ...sid,
+          isPRD: !!sid.is_prd,
+          visibleInGantt: !!sid.visible_in_gantt,
+          activities: activitiesWithSubs
+        };
+      });
+      return {
+        ...landscape,
+        sids: sidsWithActivities
+      };
+    });
+
+    const backup = {
+      version: APP_VERSION,
+      exportDate: new Date().toISOString(),
+      settings: settingsObj,
+      activityTypes,
+      teamMembers,
+      maintenanceSundays,
+      landscapes: landscapesWithData
+    };
+
+    // Set headers for file download
+    const filename = `sap-planner-backup-${new Date().toISOString().split('T')[0]}.json`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/json');
+
+    logAction(req.user.id, req.user.username, 'BACKUP_EXPORT', { filename });
+    res.json(backup);
+  } catch (error) {
+    console.error('Backup export error:', error);
+    res.status(500).json({ error: 'Fehler beim Erstellen des Backups: ' + error.message });
+  }
+});
+
+// Import data from JSON backup (replaces existing data)
+app.post('/api/backup/import', authenticate, requireTeamLead, (req, res) => {
+  const backup = req.body;
+
+  // Validate backup structure
+  if (!backup || !backup.version) {
+    return res.status(400).json({ error: 'Ungültiges Backup-Format: Version fehlt' });
+  }
+
+  try {
+    const stats = {
+      activityTypes: 0,
+      teamMembers: 0,
+      maintenanceSundays: 0,
+      landscapes: 0,
+      sids: 0,
+      activities: 0,
+      subActivities: 0
+    };
+
+    const transaction = db.transaction(() => {
+      // 1. Import settings
+      if (backup.settings) {
+        if (backup.settings.year) {
+          db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(String(backup.settings.year), 'year');
+        }
+        if (backup.settings.bundesland) {
+          db.prepare('UPDATE settings SET value = ? WHERE key = ?').run(backup.settings.bundesland, 'bundesland');
+        }
+      }
+
+      // 2. Import activity types (upsert)
+      if (backup.activityTypes && Array.isArray(backup.activityTypes)) {
+        const insertOrUpdateType = db.prepare(`
+          INSERT INTO activity_types (id, label, color, sort_order) VALUES (?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET label = excluded.label, color = excluded.color, sort_order = excluded.sort_order
+        `);
+        backup.activityTypes.forEach((type, index) => {
+          insertOrUpdateType.run(type.id, type.label, type.color, type.sort_order ?? index);
+          stats.activityTypes++;
+        });
+      }
+
+      // 3. Import team members (clear and recreate)
+      if (backup.teamMembers && Array.isArray(backup.teamMembers)) {
+        // Clear assignments first
+        db.prepare('UPDATE activities SET team_member_id = NULL').run();
+        db.prepare('UPDATE sub_activities SET team_member_id = NULL').run();
+        db.prepare('DELETE FROM team_members').run();
+
+        const insertMember = db.prepare(`
+          INSERT INTO team_members (id, name, abbreviation, sort_order, working_days, training_days, to_plan_days) 
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        backup.teamMembers.forEach(member => {
+          insertMember.run(
+            member.id,
+            member.name,
+            member.abbreviation,
+            member.sort_order || 0,
+            member.working_days || 0,
+            member.training_days || 0,
+            member.to_plan_days || 0
+          );
+          stats.teamMembers++;
+        });
+      }
+
+      // 4. Import maintenance sundays
+      if (backup.maintenanceSundays && Array.isArray(backup.maintenanceSundays)) {
+        backup.maintenanceSundays.forEach(sunday => {
+          if (sunday.id >= 1 && sunday.id <= 4) {
+            db.prepare('UPDATE maintenance_sundays SET date = ?, label = ? WHERE id = ?')
+              .run(sunday.date || '', sunday.label || '', sunday.id);
+            stats.maintenanceSundays++;
+          }
+        });
+      }
+
+      // 5. Import landscapes with full hierarchy
+      if (backup.landscapes && Array.isArray(backup.landscapes)) {
+        // Clear existing data (cascade will handle activities)
+        db.prepare('DELETE FROM sub_activities').run();
+        db.prepare('DELETE FROM activities').run();
+        db.prepare('DELETE FROM sids').run();
+        db.prepare('DELETE FROM landscapes').run();
+
+        // Create ID mapping for team members (old ID -> new ID if IDs changed)
+        const teamMemberMap = new Map();
+        if (backup.teamMembers) {
+          backup.teamMembers.forEach(m => teamMemberMap.set(m.id, m.id));
+        }
+
+        backup.landscapes.forEach((landscape, landscapeIndex) => {
+          const landscapeResult = db.prepare('INSERT INTO landscapes (name, sort_order) VALUES (?, ?)')
+            .run(landscape.name, landscape.sort_order ?? landscapeIndex);
+          const newLandscapeId = landscapeResult.lastInsertRowid;
+          stats.landscapes++;
+
+          if (landscape.sids && Array.isArray(landscape.sids)) {
+            landscape.sids.forEach((sid, sidIndex) => {
+              const sidResult = db.prepare(`
+                INSERT INTO sids (landscape_id, name, is_prd, visible_in_gantt, notes, sort_order) 
+                VALUES (?, ?, ?, ?, ?, ?)
+              `).run(
+                newLandscapeId,
+                sid.name || '',
+                sid.isPRD || sid.is_prd ? 1 : 0,
+                (sid.visibleInGantt ?? sid.visible_in_gantt ?? true) ? 1 : 0,
+                sid.notes || '',
+                sid.sort_order ?? sidIndex
+              );
+              const newSidId = sidResult.lastInsertRowid;
+              stats.sids++;
+
+              if (sid.activities && Array.isArray(sid.activities)) {
+                sid.activities.forEach(activity => {
+                  const teamMemberId = activity.teamMemberId || activity.team_member_id;
+                  const activityResult = db.prepare(`
+                    INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, team_member_id, start_time, end_time) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  `).run(
+                    newSidId,
+                    activity.type || activity.type_id,
+                    activity.startDate || activity.start_date,
+                    activity.duration || 1,
+                    activity.includesWeekend || activity.includes_weekend ? 1 : 0,
+                    teamMemberMap.has(teamMemberId) ? teamMemberId : null,
+                    activity.start_time || null,
+                    activity.end_time || null
+                  );
+                  const newActivityId = activityResult.lastInsertRowid;
+                  stats.activities++;
+
+                  if (activity.subActivities && Array.isArray(activity.subActivities)) {
+                    activity.subActivities.forEach((sub, subIndex) => {
+                      const subTeamMemberId = sub.teamMemberId || sub.team_member_id;
+                      db.prepare(`
+                        INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, sort_order, team_member_id, start_time, end_time) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                      `).run(
+                        newActivityId,
+                        sub.name || 'Sub-Aktivität',
+                        sub.startDate || sub.start_date,
+                        sub.duration || 1,
+                        sub.includesWeekend || sub.includes_weekend ? 1 : 0,
+                        sub.sort_order ?? subIndex,
+                        teamMemberMap.has(subTeamMemberId) ? subTeamMemberId : null,
+                        sub.start_time || null,
+                        sub.end_time || null
+                      );
+                      stats.subActivities++;
+                    });
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+    });
+
+    transaction();
+
+    logAction(req.user.id, req.user.username, 'BACKUP_IMPORT', {
+      version: backup.version,
+      exportDate: backup.exportDate,
+      stats
+    });
+
+    res.json({
+      success: true,
+      message: 'Backup erfolgreich importiert',
+      stats
+    });
+  } catch (error) {
+    console.error('Backup import error:', error);
+    res.status(500).json({ error: 'Fehler beim Import: ' + error.message });
+  }
+});
+
+// =========================================================================
 // SERVE FRONTEND
 // =========================================================================
 
