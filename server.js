@@ -508,6 +508,12 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
+
+// Health check endpoint (for Docker/Portainer)
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'healthy', version: APP_VERSION });
+});
+
 // Get current user
 app.get('/api/auth/me', authenticate, (req, res) => {
   res.json({ ...req.user, version: APP_VERSION });

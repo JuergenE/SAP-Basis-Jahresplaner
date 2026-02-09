@@ -1,0 +1,40 @@
+# Dependencies (rebuilt in builder stage)
+node_modules/
+
+# Git
+.git/
+.gitignore
+
+# SQLite database files (use mounted volume instead)
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+
+# IDE and OS files
+.DS_Store
+.vscode/
+*.swp
+*.swo
+
+# Backup files
+*.back
+*.bak
+
+# Development files
+.env
+.env.local
+
+# Documentation (not needed in container)
+*.md
+!README.md
+
+# Screenshots and images (optional in container)
+screenshot.png
+
+# Utility scripts (not needed at runtime)
+check_schema.js
+migrate_manual.js
+manage-users.js
