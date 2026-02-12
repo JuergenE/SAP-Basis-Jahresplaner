@@ -9,6 +9,7 @@ Die SAP Basis Jahresplaner Anwendung ist ein Multi-User-fähiges Planungstool mi
 - [Überblick & Architektur](#überblick--architektur)
 - [Installation & Start (Lokal)](#installation--start-lokal)
 - [Produktions-Deployment](#produktions-deployment)
+- [HTTPS aktivieren](#https-aktivieren)
 - [Benutzerverwaltung & Sicherheit](#benutzerverwaltung--sicherheit)
 - [Betrieb & Wartung](#betrieb--wartung)
 - [Technische Referenz (API & DB)](#technische-referenz-api--db)
@@ -82,7 +83,7 @@ Planung mit DB/
 
 ## Installation & Start (Lokal)
 
-Voraussetzung: Node.js Version 24 oder höher (LTS).
+Voraussetzung: Node.js Version 20 oder höher (LTS).
 
 1. **Projektverzeichnis öffnen:**
    ```bash
@@ -196,6 +197,52 @@ Damit die Clients den Server finden, muss die `sap-planner.html` angepasst werde
 
 ---
 
+## HTTPS aktivieren
+
+Der Server erkennt automatisch Zertifikatsdateien (`server.key` und `server.cert`) und startet dann als HTTPS-Server. Es ist **keine Code-Änderung** nötig.
+
+### Option A: Direktes HTTPS (Self-Signed Zertifikat)
+
+Empfohlen für den **Intranet-Einsatz** (z.B. im Firmennetz). Browser zeigen eine einmalige Warnung an.
+
+**1. Zertifikat erzeugen (einmalig auf dem Server):**
+
+```bash
+mkdir -p /opt/sap-planner/certs
+openssl req -x509 -nodes -days 365 \
+  -newkey rsa:2048 \
+  -keyout /opt/sap-planner/certs/server.key \
+  -out /opt/sap-planner/certs/server.cert \
+  -subj "/CN=sap-planner/O=Optima Solutions"
+```
+
+**2. Docker Compose anpassen:**
+
+Mounten Sie die Zertifikate als read-only Volumes:
+
+```yaml
+volumes:
+  - sap-planner-data:/app/data
+  - /opt/sap-planner/certs/server.key:/app/server.key:ro
+  - /opt/sap-planner/certs/server.cert:/app/server.cert:ro
+```
+
+**3. Container neu starten:**
+
+Der Server erkennt die Dateien automatisch:
+```
+SAP Basis Jahresplaner Server (HTTPS)
+Server läuft auf: https://localhost:3232
+```
+
+**Ohne Docker (lokal):** Legen Sie `server.key` und `server.cert` direkt neben `server.js` ab.
+
+### Option B: Reverse Proxy (Nginx + Let's Encrypt)
+
+Für **öffentlich erreichbare** Installationen mit gültigem SSL-Zertifikat. Erfordert eine Domain und Port 80/443 Zugang. Richten Sie einen Nginx- oder Traefik-Container als Reverse Proxy ein.
+
+---
+
 ## Benutzerverwaltung & Sicherheit
 
 ### Benutzerrollen
@@ -210,6 +257,7 @@ Damit die Clients den Server finden, muss die `sap-planner.html` angepasst werde
 | **User Assignment** | ✅ Yes | ✅ Yes | ❌ No |
 | **Settings** | ✅ Yes | ✅ Yes | ❌ No |
 | **Data Import** | ✅ Yes | ✅ Yes | ❌ No |
+| **Backup / Restore** | ✅ Yes | ✅ Yes | ❌ No |
 | **Team Management** | ✅ Full | ❌ Read-only | ❌ No |
 | **Create Users** | ✅ Admin, User | ✅ User only | ❌ No |
 | **Delete Users** | ✅ Admin, User | ✅ User only | ❌ No |
@@ -236,7 +284,7 @@ node manage-users.js delete <username>
 ```
 
 ### Sicherheitsempfehlungen
-1.  **HTTPS aktivieren:** In Produktion sollte ein Reverse Proxy (z.B. Nginx) verwendet werden, um SSL-Verschlüsselung bereitzustellen.
+1.  **HTTPS aktivieren:** Siehe [HTTPS aktivieren](#https-aktivieren). Der Server unterstützt HTTPS nativ über Zertifikatsdateien.
 2.  **Passwörter:** Nutzen Sie starke Passwörter. Diese werden sicher mit `bcrypt` gehasht gespeichert.
 
 ---
@@ -244,15 +292,30 @@ node manage-users.js delete <username>
 ## Betrieb & Wartung
 
 ### Backup
+
+#### In-App Backup (empfohlen)
+
+Die App bietet eine integrierte Backup/Restore-Funktion (Admin oder Teamlead Rolle erforderlich):
+
+1. Navigieren Sie zum **Team Management** Tab
+2. Scrollen Sie zur Sektion **💾 Backup / Wiederherstellung**
+3. **📥 Backup exportieren** — lädt alle Daten als JSON-Datei herunter
+4. **📤 Backup importieren** — stellt Daten aus einer JSON-Datei wieder her
+
+> ⚠️ **Achtung:** Der Import **überschreibt** alle bestehenden Daten (nach Bestätigung).
+
+**Enthaltene Daten:** Einstellungen, Aktivitätstypen, Teammitglieder, Wartungssonntage, Landschaften mit SIDs, Aktivitäten und Sub-Aktivitäten.  
+**Nicht enthalten:** Benutzerkonten und Passwörter (aus Sicherheitsgründen).
+
+#### Dateibasiertes Backup
+
 Die gesamte Datenbank ist eine einzelne Datei: `sap-planner.db`.
 
-**Manuelles Backup:**
 ```bash
+# Manuelles Backup
 cp sap-planner.db sap-planner-backup.db
-```
 
-**Automatisches Backup (Cron Beispiel):**
-```bash
+# Automatisches Backup (Cron Beispiel)
 0 2 * * * cp /opt/sap-basis-planner/sap-planner.db /backup/sap-planner-$(date +\%Y\%m\%d).db
 ```
 
@@ -288,6 +351,11 @@ pm2 logs sap-planner
 | GET | `/api/landscapes` | Lädt alle Daten (Landschaften, SIDs, Aktivitäten) |
 | POST | `/api/activities` | Neue Aktivität (Admin) |
 | POST | `/api/import/json` | Import von Legacy JSON-Daten (Admin) |
+| **Backup** | | |
+| GET | `/api/backup/export` | Vollständiger Daten-Export als JSON (Admin) |
+| POST | `/api/backup/import` | Daten-Import aus JSON-Backup (Admin) |
+| **System** | | |
+| GET | `/api/health` | Health-Check Endpoint (für Docker/Portainer) |
 
 (Vollständige API-Liste siehe Quellcode `server.js`)
 
