@@ -40,11 +40,14 @@ const MAX_LOG_SIZE = 1024 * 1024; // 1MB
 
 app.use(cookieParser());
 
-// Security Headers via Helmet - Disabled temporarily to bypass HSTS/CSP issues in Portainer/IP environments
-// app.use(helmet({
-//   hsts: false, 
-//   contentSecurityPolicy: { ... }
-// }));
+// Security Headers via Helmet
+// HSTS disabled: app is accessed via IP/HTTP in Portainer environments
+// CSP disabled: inline scripts (React/Babel) and CDN resources require permissive policy
+app.use(helmet({
+  hsts: false,
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false
+}));
 
 // Rate Limiting
 const apiLimiter = rateLimit({
@@ -71,8 +74,14 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
-// Serve static files (the HTML frontend)
-app.use(express.static(__dirname));
+// Serve only specific frontend files (not server.js, package.json, etc.)
+const allowedStaticFiles = ['sap-planner.html', 'screenshot.png'];
+app.get('/:filename', (req, res, next) => {
+  if (allowedStaticFiles.includes(req.params.filename)) {
+    return res.sendFile(path.join(__dirname, req.params.filename));
+  }
+  next();
+});
 
 // =========================================================================
 // DATABASE SETUP
@@ -477,7 +486,7 @@ app.post('/api/auth/login', async (req, res) => {
     // Set HttpOnly Cookie
     res.cookie('auth_token', token, {
       httpOnly: true,
-      secure: false, // Set to true if HTTPS is enabled (localhost is usually http)
+      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000 // 24 hours
     });

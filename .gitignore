@@ -3,5 +3,7 @@
 *.db-shm
 *.db-wal
 *.log
+*.back
 node_modules/
 .env
+checkme.md
