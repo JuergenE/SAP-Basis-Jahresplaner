@@ -2461,12 +2461,12 @@
                           value={sid.name}
                           placeholder="SID Name"
                           onChange={(e) => {
-                            // Enforce max 10 chars, allowed chars (letters, numbers, _, -) and uppercase
-                            const val = e.target.value.toUpperCase().replace(/[^A-Z0-9_\-]/g, '').substring(0, 10);
+                            // Enforce max 8 chars, allowed chars (letters, numbers, _, -) and uppercase
+                            const val = e.target.value.toUpperCase().replace(/[^A-Z0-9_\-]/g, '').substring(0, 8);
                             updateSID(landscape.id, sid.id, 'name', val);
                           }}
-                          maxLength={10}
-                          title="Max. 10 Zeichen (A-Z, 0-9, _, -)"
+                          maxLength={8}
+                          title="Max. 8 Zeichen (A-Z, 0-9, _, -)"
                           disabled={!canEdit}
                           className={`px-2 py-1 border border-gray-300 rounded font-medium w-24 ${!canEdit ? 'bg-gray-100' : ''}`}
                         />
