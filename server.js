@@ -66,9 +66,12 @@ const loginLimiter = rateLimit({
 app.use('/api/auth/login', loginLimiter);
 
 // CORS Configuration
-// Restrict to same-origin for security (set explicit origins if needed for network access)
+// Set CORS_ORIGIN env var to restrict origins (comma-separated), e.g. "http://192.168.1.100:3232,https://planner.firma.local"
+const corsOrigin = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(o => o.trim())
+  : true; // Default: allow all origins (for backward compatibility)
 app.use(cors({
-  origin: true, // Allow all origins in production to support access via IP/Portainer
+  origin: corsOrigin,
   credentials: true
 }));
 
