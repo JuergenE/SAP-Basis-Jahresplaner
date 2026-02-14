@@ -245,7 +245,7 @@ const initDatabase = () => {
     const teamleadExists = db.prepare('SELECT id FROM users WHERE username = ?').get('teamlead');
     if (!teamleadExists) {
       const passwordHash = bcrypt.hashSync('teamlead', 10);
-      db.prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)').run('teamlead', passwordHash, 'teamlead');
+      db.prepare('INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, ?, 1)').run('teamlead', passwordHash, 'teamlead');
       console.log('✓ Default teamlead user created (change password after first login!)');
     }
   } catch (e) {
