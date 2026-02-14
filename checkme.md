@@ -143,3 +143,4 @@
 | 🟢 Niedrig | Session-Token TTL | 30 Min |
 | 🟢 Niedrig | Express 5 evaluieren | 1-2 Std |
 | 🟢 Niedrig | React 19 evaluieren | 2-4 Std |
+

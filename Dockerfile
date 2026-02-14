@@ -44,3 +44,4 @@ EXPOSE 3232
 
 # Start the server directly
 CMD ["node", "server.js"]
+
