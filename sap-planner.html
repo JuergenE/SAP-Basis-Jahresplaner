@@ -4,13 +4,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SAP Basis Jahresplaner 0.1.3</title>
+  <title>SAP Basis Jahresplaner 0.1.4</title>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.4/babel.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
+    /* ===== Original Styles ===== */
     .weekend-pattern {
       background: repeating-linear-gradient(45deg,
           transparent,
@@ -60,11 +61,337 @@
         gap: 0.5rem;
       }
     }
+
+    /* ===== Dark Mode Toggle Switch ===== */
+    .dark-toggle {
+      position: relative;
+      width: 56px;
+      height: 28px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #e2e8f0, #cbd5e1);
+      cursor: pointer;
+      border: none;
+      padding: 0;
+      transition: background 0.4s ease;
+      flex-shrink: 0;
+    }
+
+    .dark-toggle::after {
+      content: '☀️';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: transform 0.4s cubic-bezier(.68, -0.55, .27, 1.55), background 0.4s ease;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .dark-mode .dark-toggle {
+      background: linear-gradient(135deg, #6272a4, #44475a);
+    }
+
+    .dark-mode .dark-toggle::after {
+      content: '🌙';
+      transform: translateX(28px);
+      background: #282a36;
+    }
+
+    /* ===== Dark Mode — Dracula Palette Overrides ===== */
+    /* Transition for smooth theme switching */
+    html.dark-mode-transition,
+    html.dark-mode-transition *,
+    html.dark-mode-transition *::before,
+    html.dark-mode-transition *::after {
+      transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease !important;
+    }
+
+    /* Page background */
+    .dark-mode body {
+      background: #282a36 !important;
+    }
+
+    .dark-mode .bg-gradient-to-br {
+      background: #282a36 !important;
+    }
+
+    .dark-mode .from-slate-50 {
+      --tw-gradient-from: #282a36 !important;
+    }
+
+    .dark-mode .to-slate-100 {
+      --tw-gradient-to: #282a36 !important;
+    }
+
+    /* Cards and containers */
+    .dark-mode .bg-white {
+      background-color: #44475a !important;
+    }
+
+    .dark-mode .bg-gray-50 {
+      background-color: #383a4a !important;
+    }
+
+    .dark-mode .bg-gray-100 {
+      background-color: #383a4a !important;
+    }
+
+    .dark-mode .bg-gray-200 {
+      background-color: #4a4d5e !important;
+    }
+
+    .dark-mode .hover\:bg-gray-50:hover {
+      background-color: #4a4d5e !important;
+    }
+
+    .dark-mode .hover\:bg-gray-100:hover {
+      background-color: #4a4d5e !important;
+    }
+
+    .dark-mode .hover\:bg-gray-300:hover {
+      background-color: #555869 !important;
+    }
+
+    /* Text colors */
+    .dark-mode .text-gray-800,
+    .dark-mode .text-gray-700 {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode .text-gray-600 {
+      color: #bfc4d6 !important;
+    }
+
+    .dark-mode .text-gray-500 {
+      color: #9ca3c0 !important;
+    }
+
+    .dark-mode .text-gray-400 {
+      color: #6272a4 !important;
+    }
+
+    .dark-mode .hover\:text-gray-800:hover {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode .text-blue-700 {
+      color: #bd93f9 !important;
+    }
+
+    .dark-mode .text-blue-600 {
+      color: #bd93f9 !important;
+    }
+
+    .dark-mode .text-purple-700 {
+      color: #d6acff !important;
+    }
+
+    .dark-mode .text-red-600 {
+      color: #ff6e6e !important;
+    }
+
+    .dark-mode h1,
+    .dark-mode h2,
+    .dark-mode h3 {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode span,
+    .dark-mode label {
+      color: inherit;
+    }
+
+    .dark-mode .font-semibold,
+    .dark-mode .font-bold {
+      color: inherit;
+    }
+
+    /* Borders */
+    .dark-mode .border-gray-200,
+    .dark-mode .border-gray-300 {
+      border-color: #6272a4 !important;
+    }
+
+    .dark-mode .border-blue-300 {
+      border-color: #6272a4 !important;
+    }
+
+    .dark-mode .border-blue-600 {
+      border-color: #bd93f9 !important;
+    }
+
+    .dark-mode .border-t {
+      border-color: #6272a4;
+    }
+
+    /* Inputs and selects */
+    .dark-mode input[type="text"],
+    .dark-mode input[type="number"],
+    .dark-mode input[type="password"],
+    .dark-mode input[type="date"],
+    .dark-mode select,
+    .dark-mode textarea {
+      background-color: #383a4a !important;
+      color: #f8f8f2 !important;
+      border-color: #6272a4 !important;
+    }
+
+    .dark-mode input::placeholder,
+    .dark-mode textarea::placeholder {
+      color: #6272a4 !important;
+    }
+
+    .dark-mode option {
+      background-color: #383a4a;
+      color: #f8f8f2;
+    }
+
+    /* Shadow adjustments */
+    .dark-mode .shadow-lg {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3) !important;
+    }
+
+    .dark-mode .shadow-xl {
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4) !important;
+    }
+
+    /* Modal overlay */
+    .dark-mode .bg-black\/50,
+    .dark-mode [class*="bg-black"] {
+      background-color: rgba(0, 0, 0, 0.7) !important;
+    }
+
+    /* Patterns for dark mode */
+    .dark-mode .weekend-pattern {
+      background: repeating-linear-gradient(45deg,
+          transparent,
+          transparent 3px,
+          rgba(98, 114, 164, 0.35) 3px,
+          rgba(98, 114, 164, 0.35) 6px);
+    }
+
+    .dark-mode .holiday-pattern {
+      background: repeating-linear-gradient(-45deg,
+          transparent,
+          transparent 3px,
+          rgba(255, 85, 85, 0.25) 3px,
+          rgba(255, 85, 85, 0.25) 6px);
+    }
+
+    .dark-mode .maintenance-pattern {
+      background: repeating-linear-gradient(45deg,
+          transparent,
+          transparent 3px,
+          rgba(189, 147, 249, 0.3) 3px,
+          rgba(189, 147, 249, 0.3) 6px);
+    }
+
+    /* Buttons — keep colored buttons, darken gray ones */
+    .dark-mode .bg-blue-100 {
+      background-color: rgba(189, 147, 249, 0.2) !important;
+    }
+
+    .dark-mode .hover\:bg-blue-200:hover {
+      background-color: rgba(189, 147, 249, 0.3) !important;
+    }
+
+    .dark-mode .bg-purple-50 {
+      background-color: rgba(189, 147, 249, 0.15) !important;
+    }
+
+    .dark-mode .hover\:bg-purple-50:hover {
+      background-color: rgba(189, 147, 249, 0.2) !important;
+    }
+
+    .dark-mode .bg-red-100 {
+      background-color: rgba(255, 85, 85, 0.2) !important;
+    }
+
+    .dark-mode .hover\:bg-red-200:hover {
+      background-color: rgba(255, 85, 85, 0.3) !important;
+    }
+
+    /* Gantt row label */
+    .dark-mode .gantt-row-label {
+      color: #f8f8f2;
+    }
+
+    /* Range slider */
+    .dark-mode input[type="range"] {
+      accent-color: #bd93f9;
+    }
+
+    /* Checkbox */
+    .dark-mode input[type="checkbox"] {
+      accent-color: #bd93f9;
+    }
+
+    /* Scrollbar for dark mode */
+    .dark-mode ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    .dark-mode ::-webkit-scrollbar-track {
+      background: #282a36;
+    }
+
+    .dark-mode ::-webkit-scrollbar-thumb {
+      background: #6272a4;
+      border-radius: 4px;
+    }
+
+    .dark-mode ::-webkit-scrollbar-thumb:hover {
+      background: #bd93f9;
+    }
+
+    /* Table for dark mode */
+    .dark-mode table {
+      color: #f8f8f2;
+    }
+
+    .dark-mode th {
+      background-color: #383a4a !important;
+      color: #f8f8f2 !important;
+      border-color: #6272a4 !important;
+    }
+
+    .dark-mode td {
+      border-color: #6272a4 !important;
+    }
+
+    .dark-mode tr:hover td {
+      background-color: rgba(98, 114, 164, 0.15);
+    }
+
+    .dark-mode .bg-gray-600 {
+      background-color: #555869 !important;
+    }
+
+    .dark-mode .hover\:bg-gray-700:hover {
+      background-color: #4a4d5e !important;
+    }
   </style>
 </head>
 
 <body>
   <div id="root"></div>
+  <!-- Init dark mode from localStorage BEFORE React renders to prevent flash -->
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem('darkMode') === 'true') {
+          document.documentElement.classList.add('dark-mode');
+        }
+      } catch (e) { }
+    })();
+  </script>
 
   <script type="text/babel">
     const { useState, useEffect, useMemo, useCallback } = React;
@@ -229,11 +556,21 @@
       async importBackup(data) {
         return this.request('/api/backup/import', { method: 'POST', body: JSON.stringify(data) });
       }
+
+      // Dark Mode preference (per-user)
+      async setDarkMode(enabled) {
+        return this.request('/api/auth/dark-mode', { method: 'PUT', body: JSON.stringify({ dark_mode: enabled }) });
+      }
+
+      // Toggle SID Gantt visibility (available to all users)
+      async toggleSidVisibility(sidId, visible) {
+        return this.request(`/api/sids/${sidId}/visibility`, { method: 'PATCH', body: JSON.stringify({ visible_in_gantt: visible }) });
+      }
     }
 
     const api = new ApiClient();
 
-    const APP_VERSION_FALLBACK = '0.1.3';
+    const APP_VERSION_FALLBACK = '0.1.4';
 
     const bundeslaender = [
       { id: 'BW', name: 'Baden-Württemberg' },
@@ -620,6 +957,35 @@
       const [loginError, setLoginError] = useState('');
       const [loading, setLoading] = useState(true);
 
+      // Dark mode state (initialized from localStorage for pre-login, synced with server after login)
+      const [darkMode, setDarkMode] = useState(() => {
+        try { return localStorage.getItem('darkMode') === 'true'; } catch (e) { return false; }
+      });
+
+      // Helper: apply dark mode CSS class and sync localStorage
+      const applyDarkMode = useCallback((enabled) => {
+        document.documentElement.classList.add('dark-mode-transition');
+        if (enabled) {
+          document.documentElement.classList.add('dark-mode');
+        } else {
+          document.documentElement.classList.remove('dark-mode');
+        }
+        try { localStorage.setItem('darkMode', String(enabled)); } catch (e) { }
+        setTimeout(() => document.documentElement.classList.remove('dark-mode-transition'), 350);
+        setDarkMode(enabled);
+      }, []);
+
+      // Toggle dark mode and save to server
+      const toggleDarkMode = useCallback(() => {
+        setDarkMode(prev => {
+          const next = !prev;
+          applyDarkMode(next);
+          // Save to server (fire-and-forget)
+          api.setDarkMode(next).catch(() => { });
+          return next;
+        });
+      }, [applyDarkMode]);
+
       // App state
       const [year, setYear] = useState(2026);
       const [bundesland, setBundesland] = useState('BW');
@@ -720,6 +1086,8 @@
               const userData = await api.getMe();
               setUser(userData);
               if (userData.version) setAppVersion(userData.version);
+              // Apply user's dark mode preference from server
+              applyDarkMode(!!userData.dark_mode);
               await loadData();
             } catch {
               api.setToken(null);
@@ -728,7 +1096,7 @@
           setLoading(false);
         };
         checkAuth();
-      }, [loadData]);
+      }, [loadData, applyDarkMode]);
 
 
 
@@ -744,6 +1112,8 @@
           const userData = await api.login(username, password);
           setUser(userData);
           if (userData.version) setAppVersion(userData.version);
+          // Apply user's dark mode preference from server
+          applyDarkMode(!!userData.dark_mode);
           await loadData();
         } catch (error) {
           setLoginError(error.message);
@@ -1092,6 +1462,21 @@
       };
 
       const updateSID = async (landscapeId, sidId, field, value) => {
+        // visibleInGantt is allowed for ALL users (uses separate endpoint)
+        if (field === 'visibleInGantt') {
+          try {
+            await api.toggleSidVisibility(sidId, value);
+            setLandscapes(landscapes.map(l =>
+              l.id === landscapeId ? {
+                ...l,
+                sids: l.sids.map(s => s.id !== sidId ? s : { ...s, [field]: value })
+              } : l
+            ));
+          } catch (error) {
+            alert('Fehler: ' + error.message);
+          }
+          return;
+        }
         if (!canEdit) return;
         const apiFieldMap = { 'isPRD': 'is_prd', 'visibleInGantt': 'visible_in_gantt' };
         const apiField = apiFieldMap[field] || field;
@@ -1360,14 +1745,20 @@
       const exportCSV = () => {
         try {
           const BOM = '\ufeff';
-          const exportDate = new Date().toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' });
-          const titleLine = `SAP-Basis-Planung-${year} (Export vom ${exportDate})`;
-          const lines = [titleLine, 'Systemlandschaft;SID;PRD;Aktivitaetstyp;Sub-Aktivitaet;Startdatum;Dauer (Arbeitstage);Enddatum'];
+          const now = new Date();
+          const timestamp = now.getFullYear().toString()
+            + String(now.getMonth() + 1).padStart(2, '0')
+            + String(now.getDate()).padStart(2, '0')
+            + '-'
+            + String(now.getHours()).padStart(2, '0')
+            + String(now.getMinutes()).padStart(2, '0')
+            + String(now.getSeconds()).padStart(2, '0');
+          const lines = ['Systemlandschaft;SID;PRD;Aktivitätstyp;Sub-Aktivität;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit'];
 
           landscapes.forEach(landscape => {
-            landscape.sids.forEach(sid => {
+            landscape.sids.filter(sid => sid.visibleInGantt !== false).forEach(sid => {
               if (sid.activities.length === 0) {
-                lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};;;;;`);
+                lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};;;;;;;`);
               } else {
                 sid.activities.forEach(activity => {
                   const actType = activityTypes.find(t => t.id === activity.type);
@@ -1377,11 +1768,11 @@
                   if (activity.subActivities && activity.subActivities.length > 0) {
                     // Export each sub-activity as a separate row
                     activity.subActivities.forEach(subActivity => {
-                      lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};${subActivity.name};${formatDateDE(subActivity.startDate)};${subActivity.duration};${formatDateDE(subActivity.endDate)}`);
+                      lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};${subActivity.name};${formatDateDE(subActivity.startDate)};${subActivity.duration};${formatDateDE(subActivity.endDate)};${subActivity.start_time || ''};${subActivity.end_time || ''}`);
                     });
                   } else {
                     // Export activity without sub-activities
-                    lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};;${formatDateDE(activity.startDate)};${activity.duration};${formatDateDE(activity.endDate)}`);
+                    lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};;${formatDateDE(activity.startDate)};${activity.duration};${formatDateDE(activity.endDate)};${activity.start_time || ''};${activity.end_time || ''}`);
                   }
                 });
               }
@@ -1393,7 +1784,7 @@
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `SAP-Basis-Planung-${year}.csv`;
+          a.download = `SAP-Basis-Planung-${year}-${timestamp}.csv`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
@@ -1459,14 +1850,14 @@
           rangeStart = yearStart;
           rangeEnd = yearEnd;
         } else if (viewMode === 'week') {
-          // Week view: 420 days total, starting 60 days before today
-          const todayDate = new Date();
-          rangeStart = new Date(todayDate);
+          // Week view: 420 days total, starting 60 days before Jan 1 of the selected year
+          rangeStart = new Date(year, 0, 1);
           rangeStart.setDate(rangeStart.getDate() - 60);
           rangeEnd = new Date(rangeStart);
           rangeEnd.setDate(rangeEnd.getDate() + 419); // 420 days total
-          // Calculate offset to show today at the left
-          todayOffset = 60; // Today is 60 days from the start
+          // Calculate offset to show today at the left edge
+          const todayDate = new Date();
+          todayOffset = Math.max(0, Math.round((todayDate - rangeStart) / (1000 * 60 * 60 * 24)));
         } else {
           // Quarter view: show selected quarter
           rangeStart = new Date(year, (selectedQuarter - 1) * 3, 1);
@@ -2142,11 +2533,11 @@
                       <SaveIcon /> Einstellungen speichern
                     </button>
                   )}
+                  <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
+                    <DownloadIcon /> CSV Export
+                  </button>
                   {canEdit && (
                     <>
-                      <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-                        <DownloadIcon /> CSV Export
-                      </button>
                       <button onClick={exportJSON} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
                         <DownloadIcon /> JSON Export
                       </button>
@@ -2163,6 +2554,12 @@
                       📋 Logfiles
                     </button>
                   )}
+                  <button
+                    onClick={toggleDarkMode}
+                    className="dark-toggle"
+                    title={darkMode ? 'Heller Modus' : 'Dunkler Modus (Dracula)'}
+                    aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                  />
                 </div>
               </div>
 
@@ -2177,7 +2574,10 @@
                     max="2036"
                     onChange={(e) => {
                       const val = parseInt(e.target.value);
-                      if (val >= 2026 && val <= 2036) setYear(val);
+                      if (val >= 2026 && val <= 2036) {
+                        setYear(val);
+                        setViewOffset(60); // Reset to Jan 1 of the new year
+                      }
                     }}
                     disabled={!canEdit}
                     className={`px-4 py-2 border border-gray-300 rounded-lg w-24 ${!canEdit ? 'bg-gray-100' : ''}`}
@@ -2190,7 +2590,7 @@
                     value={bundesland}
                     onChange={(e) => setBundesland(e.target.value)}
                     disabled={!canEdit}
-                    className={`px-4 py-2 border border-gray-300 rounded-lg ${!canEdit ? 'bg-gray-100' : ''}`}
+                    className={`px-4 py-2 border border-gray-300 rounded-lg ${!canEdit ? 'bg-gray-100 appearance-none' : ''}`}
                   >
                     {bundeslaender.map(bl => (
                       <option key={bl.id} value={bl.id}>{bl.name}</option>
@@ -2234,6 +2634,25 @@
                     <select
                       className="px-4 py-2 border border-gray-300 rounded-lg bg-purple-50"
                       defaultValue=""
+                      onChange={(e) => {
+                        const selectedId = parseInt(e.target.value);
+                        const selected = maintenanceSundays.find(s => s.id === selectedId);
+                        if (!selected || !selected.date) return;
+
+                        // Ensure week view mode for offset-based navigation
+                        if (viewMode !== 'week') setViewMode('week');
+
+                        // Calculate offset: rangeStart is 60 days before today
+                        // Calculate offset: rangeStart is 60 days before Jan 1 of selected year
+                        const rangeStart = new Date(year, 0, 1);
+                        rangeStart.setDate(rangeStart.getDate() - 60);
+                        const targetDate = new Date(selected.date);
+                        const dayIndex = Math.round((targetDate - rangeStart) / (1000 * 60 * 60 * 24));
+                        const daysToShow = 65;
+                        const totalDays = 420;
+                        const centerOffset = Math.max(0, Math.min(totalDays - daysToShow, dayIndex - Math.floor(daysToShow / 2)));
+                        setViewOffset(centerOffset);
+                      }}
                     >
                       <option value="" disabled>Auswählen...</option>
                       {maintenanceSundays.filter(s => s.date).map(s => (
@@ -2267,15 +2686,17 @@
               >
                 📊 Gantt-Ansicht
               </button>
-              <button
-                onClick={() => setActiveTab('team')}
-                className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'team'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                👥 Team Management
-              </button>
+              {canEdit && (
+                <button
+                  onClick={() => setActiveTab('team')}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'team'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                >
+                  👥 Team Management
+                </button>
+              )}
             </div>
 
             {/* Legend - visible only when Gantt tab is active */}
@@ -2485,7 +2906,6 @@
                             type="checkbox"
                             checked={sid.visibleInGantt !== false} // Default to true if undefined
                             onChange={(e) => updateSID(landscape.id, sid.id, 'visibleInGantt', e.target.checked)}
-                            disabled={!canEdit}
                             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                           <span>Sichtbar in Gantt</span>

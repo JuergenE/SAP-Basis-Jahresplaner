@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3232;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Read version from package.json
-let APP_VERSION = '0.1.3';
+let APP_VERSION = '0.1.4';
 try {
   const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
   APP_VERSION = packageJson.version || '1.0.0';
@@ -373,6 +373,22 @@ const initDatabase = () => {
 
 
 
+  // Migration: Add dark_mode column to users table if not exists
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN dark_mode BOOLEAN DEFAULT 0`);
+    console.log('✓ Added dark_mode to users');
+  } catch (e) { }
+
+  // Migration: Create user_sid_visibility table for per-user Gantt visibility
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_sid_visibility (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      sid_id INTEGER NOT NULL REFERENCES sids(id) ON DELETE CASCADE,
+      visible BOOLEAN NOT NULL DEFAULT 1,
+      PRIMARY KEY (user_id, sid_id)
+    )
+  `);
+
   console.log('✓ Database initialized');
 };
 
@@ -467,7 +483,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Benutzername und Passwort erforderlich' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const user = db.prepare('SELECT * FROM users WHERE LOWER(username) = LOWER(?)').get(username);
     if (!user) {
       return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
     }
@@ -500,6 +516,7 @@ app.post('/api/auth/login', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
+        dark_mode: !!user.dark_mode,
         version: APP_VERSION
       },
       version: APP_VERSION
@@ -528,7 +545,15 @@ app.get('/api/health', (req, res) => {
 
 // Get current user
 app.get('/api/auth/me', authenticate, (req, res) => {
-  res.json({ ...req.user, version: APP_VERSION });
+  const user = db.prepare('SELECT dark_mode FROM users WHERE id = ?').get(req.user.id);
+  res.json({ ...req.user, dark_mode: !!(user && user.dark_mode), version: APP_VERSION });
+});
+
+// Update dark mode preference
+app.put('/api/auth/dark-mode', authenticate, (req, res) => {
+  const { dark_mode } = req.body;
+  db.prepare('UPDATE users SET dark_mode = ? WHERE id = ?').run(dark_mode ? 1 : 0, req.user.id);
+  res.json({ success: true, dark_mode: !!dark_mode });
 });
 
 // Change own password
@@ -669,10 +694,15 @@ app.get('/api/landscapes', authenticate, (req, res) => {
 
     const sidsWithActivities = sids.map(sid => {
       const activities = db.prepare('SELECT * FROM activities WHERE sid_id = ? ORDER BY start_date').all(sid.id);
+
+      // Check per-user visibility override
+      const userVis = req.user ? db.prepare('SELECT visible FROM user_sid_visibility WHERE user_id = ? AND sid_id = ?').get(req.user.id, sid.id) : null;
+      const visibleInGantt = userVis !== undefined && userVis !== null ? !!userVis.visible : sid.visible_in_gantt !== 0;
+
       return {
         ...sid,
         isPRD: !!sid.is_prd,
-        visibleInGantt: sid.visible_in_gantt !== 0, // SQLite boolean is 0/1
+        visibleInGantt,
         activities: activities.map(a => {
           // Get sub-activities for this activity
           const subActivities = db.prepare('SELECT * FROM sub_activities WHERE activity_id = ? ORDER BY sort_order').all(a.id);
@@ -843,6 +873,19 @@ app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
 
   values.push(id);
   db.prepare(`UPDATE sids SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  res.json({ success: true });
+});
+
+// Toggle SID Gantt visibility — per-user, available to ALL authenticated users
+app.patch('/api/sids/:id/visibility', authenticate, (req, res) => {
+  const { id } = req.params;
+  const { visible_in_gantt } = req.body;
+  if (visible_in_gantt === undefined) {
+    return res.status(400).json({ error: 'visible_in_gantt erforderlich' });
+  }
+  db.prepare(
+    'INSERT OR REPLACE INTO user_sid_visibility (user_id, sid_id, visible) VALUES (?, ?, ?)'
+  ).run(req.user.id, id, visible_in_gantt ? 1 : 0);
   res.json({ success: true });
 });
 

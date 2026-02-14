@@ -1,12 +1,13 @@
 # SAP Basis Jahresplaner
 
-Die SAP Basis Jahresplaner Anwendung ist ein Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Admin/User) und bietet eine REST-API für die Verwaltung von Planungsdaten.
+Version **0.1.4** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User) und bietet eine REST-API für die Verwaltung von Planungsdaten.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
 ## Inhaltsverzeichnis
 
 - [Überblick & Architektur](#überblick--architektur)
+- [Neue Features (v0.1.4)](#neue-features-v014)
 - [Installation & Start (Lokal)](#installation--start-lokal)
 - [Produktions-Deployment](#produktions-deployment)
 - [HTTPS aktivieren](#https-aktivieren)
@@ -78,6 +79,41 @@ Planung mit DB/
 ├── sap-planner.db         # SQLite-Datenbank (wird automatisch erstellt)
 └── node_modules/          # npm-Abhängigkeiten
 ```
+
+---
+
+## Neue Features (v0.1.4)
+
+### 🌙 Dark Mode
+
+Jeder Benutzer kann zwischen hellem und dunklem Design wechseln. Der Toggle befindet sich im Header (Sonne/Mond-Symbol). Die Einstellung wird **pro Benutzer** in der Datenbank gespeichert und automatisch bei der Anmeldung wiederhergestellt.
+
+### 👁️ Per-User Gantt-Sichtbarkeit
+
+Die Checkbox „Sichtbar in Gantt" speichert die Auswahl **pro Benutzer**. Jeder Benutzer kann individuell entscheiden, welche SIDs im Gantt-Chart angezeigt werden, ohne die Ansicht anderer Benutzer zu beeinflussen.
+
+### 📊 CSV Export für alle Benutzer
+
+Der CSV Export steht nun **allen Benutzern** zur Verfügung (nicht nur Admin/Teamlead):
+
+- Exportiert nur die SIDs, die für den aktuellen Benutzer **„Sichtbar in Gantt"** sind
+- Dateiname mit Zeitstempel: `SAP-Basis-Planung-<Jahr>-<YYYYMMDD-HHMMSS>.csv`
+- Spalten: Systemlandschaft, SID, PRD, Aktivitätstyp, Sub-Aktivität, Startdatum, Dauer, Enddatum, **Startzeit**, **Endzeit**
+- UTF-8 mit BOM, Semikolon als Trennzeichen (Excel-kompatibel)
+
+### 📅 Jahresbasierte Gantt-Ansicht
+
+Die Kalenderwochenansicht basiert jetzt auf dem **gewählten Jahr** statt dem aktuellen Datum. Beim Wechsel des Jahres springt die Ansicht automatisch auf den 1. Januar des neuen Jahres.
+
+### 🔧 Wartungssonntag-Zentrierung
+
+Bei Auswahl eines Wartungssonntags scrollt die Gantt-Ansicht automatisch so, dass der gewählte Termin **mittig** im sichtbaren Bereich angezeigt wird. Falls nicht bereits aktiv, wird automatisch die Wochenansicht aktiviert.
+
+### 🔐 Weitere Verbesserungen
+
+- **Login:** Benutzername ist nicht mehr case-sensitiv (z.B. „kevin" = „Kevin")
+- **Team Management Tab:** Nur sichtbar für Teamlead und Admin
+- **Bundesland-Dropdown:** Kein Dropdown-Pfeil mehr für normale Benutzer (read-only)
 
 ---
 
@@ -247,20 +283,23 @@ Für **öffentlich erreichbare** Installationen mit gültigem SSL-Zertifikat. Er
 
 ### Benutzerrollen
 
-| Feature | Teamlead (Superuser) | Admin | Viewer (User) |
+| Feature | Teamlead (Superuser) | Admin | User |
 |---|---|---|---|
-| **View Data** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Collapse SIDs** | ✅ Yes | ✅ Yes | ✅ Yes |
-| **Manage Landscapes** | ✅ Yes | ✅ Yes | ❌ No |
-| **Manage SIDs** | ✅ Yes | ✅ Yes | ❌ No |
-| **Manage Activities** | ✅ Yes | ✅ Yes | ❌ No |
-| **User Assignment** | ✅ Yes | ✅ Yes | ❌ No |
-| **Settings** | ✅ Yes | ✅ Yes | ❌ No |
-| **Data Import** | ✅ Yes | ✅ Yes | ❌ No |
-| **Backup / Restore** | ✅ Yes | ✅ Yes | ❌ No |
-| **Team Management** | ✅ Full | ❌ Read-only | ❌ No |
-| **Create Users** | ✅ Admin, User | ✅ User only | ❌ No |
-| **Delete Users** | ✅ Admin, User | ✅ User only | ❌ No |
+| **Daten anzeigen** | ✅ | ✅ | ✅ |
+| **SIDs auf-/zuklappen** | ✅ | ✅ | ✅ |
+| **Dark Mode** | ✅ | ✅ | ✅ |
+| **Gantt-Sichtbarkeit (pro User)** | ✅ | ✅ | ✅ |
+| **CSV Export** | ✅ | ✅ | ✅ |
+| **Landschaften verwalten** | ✅ | ✅ | ❌ |
+| **SIDs verwalten** | ✅ | ✅ | ❌ |
+| **Aktivitäten verwalten** | ✅ | ✅ | ❌ |
+| **Team-Zuordnung** | ✅ | ✅ | ❌ |
+| **Einstellungen** | ✅ | ✅ | ❌ |
+| **JSON Import/Export** | ✅ | ✅ | ❌ |
+| **Backup / Restore** | ✅ | ✅ | ❌ |
+| **Team Management Tab** | ✅ | ✅ | ❌ |
+| **Benutzer erstellen** | ✅ Admin, User | ✅ User | ❌ |
+| **Benutzer löschen** | ✅ Admin, User | ✅ User | ❌ |
 
 > **Note:** Teamlead cannot be deleted. There must always be at least one Teamlead.
 
@@ -331,10 +370,13 @@ pm2 logs sap-planner
 ## Technische Referenz (API & DB)
 
 ### Datenbankschema (Auszug)
-*   **users:** `id, username, password_hash, role`
+*   **users:** `id, username, password_hash, role, dark_mode`
 *   **landscapes:** `id, name, sort_order`
-*   **sids:** `id, landscape_id, name, is_prd`
-*   **activities:** `sid_id, type_id, start_date, duration`
+*   **sids:** `id, landscape_id, name, is_prd, visible_in_gantt, notes, sort_order`
+*   **activities:** `sid_id, type_id, start_date, duration, start_time, end_time, team_member_id`
+*   **sub_activities:** `activity_id, name, start_date, duration, start_time, end_time, team_member_id`
+*   **user_sid_visibility:** `user_id, sid_id, visible` — Per-User Gantt-Sichtbarkeit
+*   **team_members:** `id, name, abbreviation, working_days, training_days, to_plan_days`
 *   **logs:** Audit-Log aller Aktionen.
 
 ### API Endpoints
@@ -344,11 +386,13 @@ pm2 logs sap-planner
 | **Auth** | | |
 | POST | `/api/auth/login` | Login |
 | GET | `/api/auth/me` | Aktueller User Info |
+| PUT | `/api/auth/dark-mode` | Dark Mode Einstellung speichern |
 | **Settings** | | |
 | GET | `/api/settings` | Einstellungen lesen |
 | PUT | `/api/settings` | Einstellungen schreiben (Admin) |
 | **Data** | | |
 | GET | `/api/landscapes` | Lädt alle Daten (Landschaften, SIDs, Aktivitäten) |
+| PATCH | `/api/sids/:id/visibility` | Gantt-Sichtbarkeit pro User setzen |
 | POST | `/api/activities` | Neue Aktivität (Admin) |
 | POST | `/api/import/json` | Import von Legacy JSON-Daten (Admin) |
 | **Backup** | | |
