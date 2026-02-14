@@ -115,6 +115,7 @@
     /* Page background */
     .dark-mode body {
       background: #282a36 !important;
+      color: #f8f8f2 !important;
     }
 
     .dark-mode .bg-gradient-to-br {
@@ -158,10 +159,29 @@
       background-color: #555869 !important;
     }
 
-    /* Text colors */
+    /* Text colors — catch-all: set default on root so everything inherits */
+    .dark-mode {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode .text-gray-900,
     .dark-mode .text-gray-800,
     .dark-mode .text-gray-700 {
       color: #f8f8f2 !important;
+    }
+
+    .dark-mode .text-black {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode p,
+    .dark-mode td,
+    .dark-mode th,
+    .dark-mode li,
+    .dark-mode div,
+    .dark-mode span,
+    .dark-mode label {
+      color: #f8f8f2;
     }
 
     .dark-mode .text-gray-600 {
@@ -176,7 +196,7 @@
       color: #6272a4 !important;
     }
 
-    .dark-mode .hover\:text-gray-800:hover {
+    .dark-mode .hover\\:text-gray-800:hover {
       color: #f8f8f2 !important;
     }
 
@@ -202,13 +222,13 @@
       color: #f8f8f2 !important;
     }
 
-    .dark-mode span,
-    .dark-mode label {
-      color: inherit;
-    }
-
     .dark-mode .font-semibold,
     .dark-mode .font-bold {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode .text-xs,
+    .dark-mode .text-sm {
       color: inherit;
     }
 
