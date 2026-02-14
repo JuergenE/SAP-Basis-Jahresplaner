@@ -1281,8 +1281,23 @@ app.delete('/api/users/:id', authenticate, requireAdmin, (req, res) => {
     }
   }
 
-  db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
-  res.json({ success: true });
+  // Handle foreign key constraint for created_by and logs
+  // If this user created other users, set their created_by to NULL
+  // Also unlink from logs (set user_id to NULL to keep log history but allow user deletion)
+  // Wrap in transaction for safety
+  const deleteTransaction = db.transaction((userId) => {
+    db.prepare('UPDATE users SET created_by = NULL WHERE created_by = ?').run(userId);
+    db.prepare('UPDATE logs SET user_id = NULL WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  });
+
+  try {
+    deleteTransaction(targetId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Fehler beim Löschen des Benutzers: ' + error.message });
+  }
 });
 
 // =========================================================================
