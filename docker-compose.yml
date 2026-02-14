@@ -1,3 +1,11 @@
+# Copyright 2026 Optima Solutions GmbH
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 services:
   sap-planner:
     build:
@@ -15,7 +23,7 @@ services:
       - PORT=3232
       - HOST=0.0.0.0
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3232/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3232/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -23,4 +31,5 @@ services:
 
 volumes:
   sap-planner-data:
+
 

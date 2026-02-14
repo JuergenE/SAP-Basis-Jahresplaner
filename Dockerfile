@@ -1,3 +1,11 @@
+# Copyright 2026 Optima Solutions GmbH
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+
 # Stage 1: Builder (Build native dependencies)
 # Using Debian-based node image which includes build tools (python3, make, g++, etc.)
 FROM node:22-bookworm AS builder
