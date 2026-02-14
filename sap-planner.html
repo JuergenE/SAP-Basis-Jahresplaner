@@ -1877,6 +1877,7 @@
           rangeEnd.setDate(rangeEnd.getDate() + 419); // 420 days total
           // Calculate offset to show today at the left edge
           const todayDate = new Date();
+          todayDate.setHours(0, 0, 0, 0);
           todayOffset = Math.max(0, Math.round((todayDate - rangeStart) / (1000 * 60 * 60 * 24)));
         } else {
           // Quarter view: show selected quarter
