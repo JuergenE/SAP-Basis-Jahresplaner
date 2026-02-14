@@ -107,6 +107,7 @@ const initDatabase = () => {
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT CHECK(role IN ('admin', 'user', 'teamlead')) NOT NULL DEFAULT 'user',
+      must_change_password BOOLEAN DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
