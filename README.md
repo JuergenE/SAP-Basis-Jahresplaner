@@ -1,4 +1,4 @@
-# SAP Basis Jahresplaner
+# SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
 Version **0.1.4** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User) und bietet eine REST-API für die Verwaltung von Planungsdaten.
 
