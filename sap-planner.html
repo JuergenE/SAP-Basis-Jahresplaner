@@ -3803,14 +3803,16 @@
                             </div>
                             <div className="flex gap-2">
                               <button
-                                onClick={() => handleResetPassword(u.id)}
+                                type="button"
+                                onClick={(e) => { e.preventDefault(); handleResetPassword(u.id); }}
                                 className="text-sm px-2 py-1 text-blue-600 hover:text-blue-800 border border-blue-300 rounded"
                               >
                                 🔑 PW Reset
                               </button>
                               {canDeleteThisUser && (
                                 <button
-                                  onClick={() => handleDeleteUser(u.id, u.username)}
+                                  type="button"
+                                  onClick={(e) => { e.preventDefault(); handleDeleteUser(u.id, u.username); }}
                                   className="text-sm px-2 py-1 text-red-600 hover:text-red-800 border border-red-300 rounded"
                                 >
                                   🗑️ Löschen
