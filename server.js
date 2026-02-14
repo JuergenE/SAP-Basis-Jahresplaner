@@ -379,6 +379,12 @@ const initDatabase = () => {
     console.log('✓ Added dark_mode to users');
   } catch (e) { }
 
+  // Migration: Add must_change_password column to users table
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT 0`);
+    console.log('✓ Added must_change_password to users');
+  } catch (e) { }
+
   // Migration: Create user_sid_visibility table for per-user Gantt visibility
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_sid_visibility (
@@ -517,6 +523,7 @@ app.post('/api/auth/login', async (req, res) => {
         username: user.username,
         role: user.role,
         dark_mode: !!user.dark_mode,
+        must_change_password: !!user.must_change_password,
         version: APP_VERSION
       },
       version: APP_VERSION
@@ -545,8 +552,8 @@ app.get('/api/health', (req, res) => {
 
 // Get current user
 app.get('/api/auth/me', authenticate, (req, res) => {
-  const user = db.prepare('SELECT dark_mode FROM users WHERE id = ?').get(req.user.id);
-  res.json({ ...req.user, dark_mode: !!(user && user.dark_mode), version: APP_VERSION });
+  const user = db.prepare('SELECT dark_mode, must_change_password FROM users WHERE id = ?').get(req.user.id);
+  res.json({ ...req.user, dark_mode: !!(user && user.dark_mode), must_change_password: !!(user && user.must_change_password), version: APP_VERSION });
 });
 
 // Update dark mode preference
@@ -577,9 +584,9 @@ app.post('/api/auth/change-password', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Aktuelles Passwort ist falsch' });
     }
 
-    // Update password
+    // Update password and clear must_change_password flag
     const newHash = await bcrypt.hash(newPassword, 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, req.user.id);
+    db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(newHash, req.user.id);
 
     res.json({ success: true, message: 'Passwort erfolgreich geändert' });
   } catch (error) {
@@ -1201,7 +1208,7 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = db.prepare('INSERT INTO users (username, password_hash, role, created_by) VALUES (?, ?, ?, ?)').run(
+    const result = db.prepare('INSERT INTO users (username, password_hash, role, created_by, must_change_password) VALUES (?, ?, ?, ?, 1)').run(
       username,
       passwordHash,
       targetRole,
@@ -1228,6 +1235,9 @@ app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     updates.push('password_hash = ?');
     values.push(passwordHash);
+    // Force password change on next login after admin reset
+    updates.push('must_change_password = ?');
+    values.push(1);
   }
   if (role !== undefined) {
     if (!['admin', 'user'].includes(role)) {

@@ -250,6 +250,24 @@
       border-color: #6272a4;
     }
 
+    /* Dark mode: delete confirmation bar */
+    .dark-mode .bg-red-50 {
+      background-color: rgba(139, 0, 0, 0.2) !important;
+    }
+
+    .dark-mode .text-red-700 {
+      color: #ff6e6e !important;
+    }
+
+    .dark-mode .border-red-200,
+    .dark-mode .border-red-300 {
+      border-color: #8b3a3a !important;
+    }
+
+    .dark-mode button {
+      color: inherit;
+    }
+
     /* Inputs and selects */
     .dark-mode input[type="text"],
     .dark-mode input[type="number"],
@@ -976,6 +994,7 @@
       const [user, setUser] = useState(null);
       const [loginError, setLoginError] = useState('');
       const [loading, setLoading] = useState(true);
+      const [mustChangePassword, setMustChangePassword] = useState(false);
 
       // Dark mode state (initialized from localStorage for pre-login, synced with server after login)
       const [darkMode, setDarkMode] = useState(() => {
@@ -1120,7 +1139,12 @@
               if (userData.version) setAppVersion(userData.version);
               // Apply user's dark mode preference from server
               applyDarkMode(!!userData.dark_mode);
-              await loadData();
+              // Check if user must change password
+              if (userData.must_change_password) {
+                setMustChangePassword(true);
+              } else {
+                await loadData();
+              }
             } catch {
               api.setToken(null);
             }
@@ -1146,7 +1170,12 @@
           if (userData.version) setAppVersion(userData.version);
           // Apply user's dark mode preference from server
           applyDarkMode(!!userData.dark_mode);
-          await loadData();
+          // Check if user must change password on first login
+          if (userData.must_change_password) {
+            setMustChangePassword(true);
+          } else {
+            await loadData();
+          }
         } catch (error) {
           setLoginError(error.message);
         }
@@ -1184,10 +1213,20 @@
           await api.changePassword(currentPassword, newPassword);
           setPasswordSuccess('Passwort erfolgreich geändert!');
           form.reset();
-          setTimeout(() => {
-            setShowPasswordDialog(false);
-            setPasswordSuccess('');
-          }, 2000);
+
+          // If this was a forced password change, load app data and enter the app
+          if (mustChangePassword) {
+            setMustChangePassword(false);
+            setTimeout(async () => {
+              setPasswordSuccess('');
+              await loadData();
+            }, 1500);
+          } else {
+            setTimeout(() => {
+              setShowPasswordDialog(false);
+              setPasswordSuccess('');
+            }, 2000);
+          }
         } catch (error) {
           setPasswordError(error.message);
         }
@@ -1198,6 +1237,9 @@
       const [users, setUsers] = useState([]);
       const [userError, setUserError] = useState('');
       const [editingUser, setEditingUser] = useState(null);
+      const [resetPasswordUserId, setResetPasswordUserId] = useState(null);
+      const [resetPasswordValue, setResetPasswordValue] = useState('');
+      const [confirmDeleteUserId, setConfirmDeleteUserId] = useState(null);
 
       // Load users
       const loadUsers = async () => {
@@ -1246,28 +1288,52 @@
           setUserError('Sie können sich nicht selbst löschen');
           return;
         }
-        if (confirm(`Benutzer "${username}" wirklich löschen?`)) {
-          try {
-            await api.deleteUser(userId);
-            await loadUsers();
-          } catch (error) {
-            setUserError(error.message);
-          }
+        // Toggle inline confirmation
+        if (confirmDeleteUserId === userId) {
+          setConfirmDeleteUserId(null);
+        } else {
+          setConfirmDeleteUserId(userId);
+          setUserError('');
         }
       };
 
-      // Reset user password
-      const handleResetPassword = async (userId) => {
-        const newPassword = prompt('Neues Passwort eingeben (mind. 6 Zeichen):');
-        if (newPassword && newPassword.length >= 6) {
-          try {
-            await api.updateUser(userId, { password: newPassword });
-            alert('Passwort wurde zurückgesetzt');
-          } catch (error) {
-            setUserError(error.message);
-          }
-        } else if (newPassword) {
-          alert('Passwort muss mindestens 6 Zeichen haben');
+      const confirmDeleteUser = async () => {
+        try {
+          await api.deleteUser(confirmDeleteUserId);
+          setConfirmDeleteUserId(null);
+          await loadUsers();
+        } catch (error) {
+          setUserError(error.message);
+        }
+      };
+
+      // Reset user password - toggle inline input
+      const handleResetPassword = (userId) => {
+        if (resetPasswordUserId === userId) {
+          // Toggle off if already open for this user
+          setResetPasswordUserId(null);
+          setResetPasswordValue('');
+        } else {
+          setResetPasswordUserId(userId);
+          setResetPasswordValue('');
+          setUserError('');
+        }
+      };
+
+      // Submit the password reset
+      const submitResetPassword = async () => {
+        if (!resetPasswordValue || resetPasswordValue.length < 6) {
+          setUserError('Passwort muss mindestens 6 Zeichen haben');
+          return;
+        }
+        try {
+          await api.updateUser(resetPasswordUserId, { password: resetPasswordValue });
+          setResetPasswordUserId(null);
+          setResetPasswordValue('');
+          setUserError('');
+          alert('Passwort wurde zurückgesetzt');
+        } catch (error) {
+          setUserError(error.message);
         }
       };
 
@@ -2535,6 +2601,83 @@
         );
       }
 
+      // Forced password change screen (after login, before app access)
+      if (user && mustChangePassword) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-lg p-8 w-full max-w-md">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-2xl">🔐</span>
+                <h1 className="text-2xl font-bold text-gray-800">Passwort ändern</h1>
+              </div>
+              <p className="text-sm text-gray-500 mb-6">
+                Willkommen, <strong>{user.username}</strong>! Bitte ändern Sie Ihr Passwort, bevor Sie die Anwendung verwenden können.
+              </p>
+
+              <form onSubmit={handlePasswordChange}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Aktuelles Passwort</label>
+                  <input
+                    type="password"
+                    name="currentPassword"
+                    required
+                    minLength="6"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Initiales Passwort eingeben"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Neues Passwort</label>
+                  <input
+                    type="password"
+                    name="newPassword"
+                    required
+                    minLength="6"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Mind. 6 Zeichen"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Neues Passwort bestätigen</label>
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    required
+                    minLength="6"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Neues Passwort wiederholen"
+                  />
+                </div>
+
+                {passwordError && (
+                  <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+                    {passwordError}
+                  </div>
+                )}
+
+                {passwordSuccess && (
+                  <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-lg text-sm">
+                    {passwordSuccess}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                >
+                  Passwort ändern
+                </button>
+              </form>
+            </div>
+            <div className="text-center text-gray-500 text-xs mt-8">
+              SAP Basis Jahresplaner • {appVersion && `Version ${appVersion} • `}Optima Solutions GmbH
+            </div>
+          </div>
+        );
+      }
+
       // Main application
       return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6">
@@ -3414,8 +3557,12 @@
                         <th className="text-left p-3 font-semibold">Abkürzung</th>
                         {canManageTeam && <th className="text-center p-3 font-semibold">Arbeitstage</th>}
                         {canManageTeam && <th className="text-center p-3 font-semibold">Schulungen</th>}
+                        {canManageTeam && <th className="text-center p-3 font-semibold">Verplant Q1</th>}
+                        {canManageTeam && <th className="text-center p-3 font-semibold">Verplant Q2</th>}
+                        {canManageTeam && <th className="text-center p-3 font-semibold">Verplant Q3</th>}
+                        {canManageTeam && <th className="text-center p-3 font-semibold">Verplant Q4</th>}
                         <th className="text-right p-3 font-semibold">Verplante Tage</th>
-                        <th className="text-center p-3 font-semibold">Zum Verplanen</th>
+                        <th className="text-center p-3 font-semibold">Verfügbare Tage</th>
                         {canManageTeam && <th className="text-right p-3 font-semibold">Aktionen</th>}
                       </tr>
                     </thead>
@@ -3423,19 +3570,31 @@
                       {teamMembers.map(member => {
                         // Calculate total days for this team member
                         let totalDays = 0;
+                        const quarterDays = [0, 0, 0, 0]; // Q1, Q2, Q3, Q4
                         landscapes.forEach(landscape => {
                           landscape.sids.forEach(sid => {
                             sid.activities.forEach(activity => {
+                              const getQuarter = (item) => {
+                                if (item.start_date) {
+                                  const month = new Date(item.start_date).getMonth(); // 0-11
+                                  return Math.floor(month / 3); // 0-3
+                                }
+                                return -1;
+                              };
                               if (activity.team_member_id === member.id) {
-                                // Only count if no sub-activities (otherwise we count sub-activities)
                                 if (!activity.subActivities || activity.subActivities.length === 0) {
-                                  totalDays += parseInt(activity.duration) || 0;
+                                  const dur = parseInt(activity.duration) || 0;
+                                  totalDays += dur;
+                                  const q = getQuarter(activity);
+                                  if (q >= 0) quarterDays[q] += dur;
                                 }
                               }
-                              // Count sub-activities for this member
                               (activity.subActivities || []).forEach(sub => {
                                 if (sub.team_member_id === member.id) {
-                                  totalDays += parseInt(sub.duration) || 0;
+                                  const dur = parseInt(sub.duration) || 0;
+                                  totalDays += dur;
+                                  const q = getQuarter(sub);
+                                  if (q >= 0) quarterDays[q] += dur;
                                 }
                               });
                             });
@@ -3480,6 +3639,10 @@
                                 />
                               </td>
                             )}
+                            {canManageTeam && <td className="p-3 text-center">{quarterDays[0]}</td>}
+                            {canManageTeam && <td className="p-3 text-center">{quarterDays[1]}</td>}
+                            {canManageTeam && <td className="p-3 text-center">{quarterDays[2]}</td>}
+                            {canManageTeam && <td className="p-3 text-center">{quarterDays[3]}</td>}
                             <td className="p-3 text-right font-semibold">{totalDays} Tage</td>
                             <td className="p-3 text-center font-bold">
                               <span>{(member.working_days || 0) - (member.training_days || 0) - totalDays}</span>
@@ -3509,7 +3672,7 @@
                       })}
                       {teamMembers.length === 0 && (
                         <tr>
-                          <td colSpan={canManageTeam ? 7 : 6} className="p-6 text-center text-gray-500">
+                          <td colSpan={canManageTeam ? 11 : 6} className="p-6 text-center text-gray-500">
                             Noch keine Teammitglieder vorhanden. Fügen Sie oben ein neues Teammitglied hinzu.
                           </td>
                         </tr>
@@ -3791,34 +3954,82 @@
                           user.role === 'teamlead' || (user.role === 'admin' && u.role === 'user')
                         );
                         return (
-                          <div key={u.id} className="flex items-center justify-between p-3 hover:bg-gray-50">
-                            <div className="flex items-center gap-3">
-                              <span className="font-medium">{u.username}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded ${u.role === 'teamlead' ? 'bg-amber-100 text-amber-700' :
-                                u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-gray-100 text-gray-600'
-                                }`}>
-                                {u.role === 'teamlead' ? 'Teamleiter' : u.role === 'admin' ? 'Administrator' : 'Benutzer'}
-                              </span>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={(e) => { e.preventDefault(); handleResetPassword(u.id); }}
-                                className="text-sm px-2 py-1 text-blue-600 hover:text-blue-800 border border-blue-300 rounded"
-                              >
-                                🔑 PW Reset
-                              </button>
-                              {canDeleteThisUser && (
+                          <div key={u.id} className="p-3 hover:bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <span className="font-medium">{u.username}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded ${u.role === 'teamlead' ? 'bg-amber-100 text-amber-700' :
+                                  u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>
+                                  {u.role === 'teamlead' ? 'Teamleiter' : u.role === 'admin' ? 'Administrator' : 'Benutzer'}
+                                </span>
+                              </div>
+                              <div className="flex gap-2">
                                 <button
                                   type="button"
-                                  onClick={(e) => { e.preventDefault(); handleDeleteUser(u.id, u.username); }}
-                                  className="text-sm px-2 py-1 text-red-600 hover:text-red-800 border border-red-300 rounded"
+                                  onClick={() => handleResetPassword(u.id)}
+                                  className={`text-sm px-2 py-1 border rounded ${resetPasswordUserId === u.id ? 'bg-blue-600 text-white border-blue-600' : 'text-blue-600 hover:text-blue-800 border-blue-300'}`}
                                 >
-                                  🗑️ Löschen
+                                  🔑 PW Reset
                                 </button>
-                              )}
+                                {canDeleteThisUser && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.preventDefault(); handleDeleteUser(u.id, u.username); }}
+                                    className="text-sm px-2 py-1 text-red-600 hover:text-red-800 border border-red-300 rounded"
+                                  >
+                                    🗑️ Löschen
+                                  </button>
+                                )}
+                              </div>
                             </div>
+                            {resetPasswordUserId === u.id && (
+                              <div className="mt-2 flex items-center gap-2 pl-4">
+                                <input
+                                  type="password"
+                                  value={resetPasswordValue}
+                                  onChange={(e) => setResetPasswordValue(e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitResetPassword(); } }}
+                                  placeholder="Neues Passwort (mind. 6 Zeichen)"
+                                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded text-sm"
+                                  autoFocus
+                                />
+                                <button
+                                  type="button"
+                                  onClick={submitResetPassword}
+                                  className="px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+                                >
+                                  Speichern
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => { setResetPasswordUserId(null); setResetPasswordValue(''); }}
+                                  className="px-3 py-1.5 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                                >
+                                  Abbrechen
+                                </button>
+                              </div>
+                            )}
+                            {confirmDeleteUserId === u.id && (
+                              <div className="mt-2 flex items-center gap-2 pl-4 p-2 bg-red-50 rounded border border-red-200">
+                                <span className="text-sm text-red-700 flex-1">Benutzer "{u.username}" wirklich löschen?</span>
+                                <button
+                                  type="button"
+                                  onClick={confirmDeleteUser}
+                                  className="px-3 py-1.5 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+                                >
+                                  Ja, löschen
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteUserId(null)}
+                                  className="px-3 py-1.5 border border-gray-300 rounded text-sm hover:bg-gray-50"
+                                >
+                                  Abbrechen
+                                </button>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
