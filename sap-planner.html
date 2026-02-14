@@ -1013,7 +1013,19 @@
       // View state
       const [viewMode, setViewMode] = useState('week');
       const [selectedQuarter, setSelectedQuarter] = useState(1);
-      const [viewOffset, setViewOffset] = useState(60); // Start at Today (offset 60)
+      const [viewOffset, setViewOffset] = useState(() => {
+        // Start at Today if current year matches default year (2026)
+        const currentYear = new Date().getFullYear();
+        const defaultYear = 2026;
+        if (currentYear === defaultYear) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const rangeStart = new Date(defaultYear, 0, 1);
+          rangeStart.setDate(rangeStart.getDate() - 60);
+          return Math.max(0, Math.round((today - rangeStart) / (1000 * 60 * 60 * 24)));
+        }
+        return 60; // Default fallback (approx Jan 1) if not current year
+      });
       const [collapsedLandscapes, setCollapsedLandscapes] = useState(new Set());
       const [collapsedSids, setCollapsedSids] = useState(new Set());
       const [collapsedActivities, setCollapsedActivities] = useState(new Set());
