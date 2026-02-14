@@ -3005,11 +3005,15 @@
                       {/* Sort Order Input */}
                       <div className="relative">
                         <input
-                          type="text"
+                          type="number"
                           defaultValue={landscape.sort_order || 0}
                           key={`sort-${landscape.id}-${landscape.sort_order}`}
                           disabled={!canEdit}
-                          maxLength={2}
+                          min="0"
+                          max="99"
+                          onInput={(e) => {
+                            e.target.value = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
+                          }}
                           onBlur={(e) => {
                             const val = e.target.value.replace(/[^0-9]/g, '');
                             if (val !== String(landscape.sort_order || 0)) {
