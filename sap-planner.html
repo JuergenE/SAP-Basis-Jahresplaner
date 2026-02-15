@@ -1901,6 +1901,72 @@
         }
       };
 
+      const exportTeamCSV = () => {
+        try {
+          const BOM = '\ufeff';
+          const now = new Date();
+          const timestamp = now.getFullYear().toString()
+            + String(now.getMonth() + 1).padStart(2, '0')
+            + String(now.getDate()).padStart(2, '0')
+            + '-'
+            + String(now.getHours()).padStart(2, '0')
+            + String(now.getMinutes()).padStart(2, '0')
+            + String(now.getSeconds()).padStart(2, '0');
+
+          const lines = ['Teammitglied;Abkürzung;Arbeitstage;Schulungen;Verplant Q1;Verplant Q2;Verplant Q3;Verplant Q4;Verplante Tage;Verfügbare Tage'];
+
+          teamMembers.forEach(member => {
+            let totalDays = 0;
+            const quarterDays = [0, 0, 0, 0];
+            landscapes.forEach(landscape => {
+              landscape.sids.forEach(sid => {
+                sid.activities.forEach(activity => {
+                  const getQuarter = (item) => {
+                    if (item.start_date) {
+                      const month = new Date(item.start_date).getMonth();
+                      return Math.floor(month / 3);
+                    }
+                    return -1;
+                  };
+                  if (activity.team_member_id === member.id) {
+                    if (!activity.subActivities || activity.subActivities.length === 0) {
+                      const dur = parseInt(activity.duration) || 0;
+                      totalDays += dur;
+                      const q = getQuarter(activity);
+                      if (q >= 0) quarterDays[q] += dur;
+                    }
+                  }
+                  (activity.subActivities || []).forEach(sub => {
+                    if (sub.team_member_id === member.id) {
+                      const dur = parseInt(sub.duration) || 0;
+                      totalDays += dur;
+                      const q = getQuarter(sub);
+                      if (q >= 0) quarterDays[q] += dur;
+                    }
+                  });
+                });
+              });
+            });
+
+            const availableDays = (member.working_days || 0) - (member.training_days || 0) - totalDays;
+            lines.push(`${member.name};${member.abbreviation};${member.working_days || 0};${member.training_days || 0};${quarterDays[0]};${quarterDays[1]};${quarterDays[2]};${quarterDays[3]};${totalDays};${availableDays}`);
+          });
+
+          const csvContent = BOM + lines.join('\r\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `SAP-Basis-Ressourcen-${year}-${timestamp}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 100);
+        } catch (err) {
+          alert('Fehler beim Team CSV Export: ' + err.message);
+        }
+      };
+
       const importJSON = async (event) => {
         if (!canEdit) return;
         const file = event.target.files?.[0];
@@ -3503,7 +3569,17 @@
           {
             activeTab === 'team' && (
               <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto">
-                <h2 className="text-2xl font-bold text-gray-800 mb-6">👥 Team Management</h2>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-gray-800">👥 Team Management</h2>
+                  {canManageTeam && (
+                    <button
+                      onClick={exportTeamCSV}
+                      className="flex items-center gap-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                    >
+                      <DownloadIcon /> CSV Export
+                    </button>
+                  )}
+                </div>
 
                 {/* Team Members Section */}
                 <div className="mb-8">
