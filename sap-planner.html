@@ -1922,13 +1922,15 @@
               landscape.sids.forEach(sid => {
                 sid.activities.forEach(activity => {
                   const getQuarter = (item) => {
-                    if (item.start_date) {
-                      const month = new Date(item.start_date).getMonth();
+                    const sd = item.startDate || item.start_date;
+                    if (sd) {
+                      const month = new Date(sd).getMonth();
                       return Math.floor(month / 3);
                     }
                     return -1;
                   };
-                  if (activity.team_member_id === member.id) {
+                  const actMemberId = activity.teamMemberId || activity.team_member_id;
+                  if (actMemberId === member.id) {
                     if (!activity.subActivities || activity.subActivities.length === 0) {
                       const dur = parseInt(activity.duration) || 0;
                       totalDays += dur;
@@ -1937,7 +1939,8 @@
                     }
                   }
                   (activity.subActivities || []).forEach(sub => {
-                    if (sub.team_member_id === member.id) {
+                    const subMemberId = sub.teamMemberId || sub.team_member_id;
+                    if (subMemberId === member.id) {
                       const dur = parseInt(sub.duration) || 0;
                       totalDays += dur;
                       const q = getQuarter(sub);
@@ -3664,13 +3667,15 @@
                           landscape.sids.forEach(sid => {
                             sid.activities.forEach(activity => {
                               const getQuarter = (item) => {
-                                if (item.start_date) {
-                                  const month = new Date(item.start_date).getMonth(); // 0-11
+                                const sd = item.startDate || item.start_date;
+                                if (sd) {
+                                  const month = new Date(sd).getMonth(); // 0-11
                                   return Math.floor(month / 3); // 0-3
                                 }
                                 return -1;
                               };
-                              if (activity.team_member_id === member.id) {
+                              const actMemberId = activity.teamMemberId || activity.team_member_id;
+                              if (actMemberId === member.id) {
                                 if (!activity.subActivities || activity.subActivities.length === 0) {
                                   const dur = parseInt(activity.duration) || 0;
                                   totalDays += dur;
@@ -3679,7 +3684,8 @@
                                 }
                               }
                               (activity.subActivities || []).forEach(sub => {
-                                if (sub.team_member_id === member.id) {
+                                const subMemberId = sub.teamMemberId || sub.team_member_id;
+                                if (subMemberId === member.id) {
                                   const dur = parseInt(sub.duration) || 0;
                                   totalDays += dur;
                                   const q = getQuarter(sub);
