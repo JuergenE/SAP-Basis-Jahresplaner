@@ -1,11 +1,11 @@
-# SAP Basis Jahresplaner – SQLite-Backend mit Multi-User-Support
+Planungstool für SAP Basis Landschaften mit SQLite-Backend und Multi-User-Support.
 
-## Übersicht
+## Hauptmerkmale
 
-Die bestehende React-basierte HTML-Anwendung wurde von localStorage-Persistenz auf eine SQLite-Datenbank umgestellt, mit:
-- **Multi-User-Fähigkeit** (gleichzeitiger Zugriff mehrerer Benutzer)
-- **Rollen-basiertes User-Management** (Admin: Schreiben, User: Lesen)
-- **Datenbank im selben Verzeichnis** wie die Anwendung (`sap-planner.db`)
+- **Multi-User-Fähigkeit:** Gleichzeitiger Zugriff mehrerer Benutzer durch SQLite WAL-Modus und serverseitiges Locking.
+- **Rollen-basiertes User-Management:** Differenzierung zwischen `teamlead` (Superuser), `admin` und `user`.
+- **Datenbank-Integration:** Serverseitige Persistenz mit `better-sqlite3`.
+- **Sicherheits-Audit:** Regelmäßige Überprüfung der Infrastruktur und des Codes (Stand Feb 2026).
 
 ---
 
@@ -34,15 +34,17 @@ Die bestehende React-basierte HTML-Anwendung wurde von localStorage-Persistenz a
 ## Dateistruktur
 
 ```
-Planung mit DB/
-├── ARCHITECTURE.md        # Diese Dokumentation
-├── sap-planner.html       # Frontend (React)
-├── server.js              # Backend-Server (Node.js/Express)
-├── manage-users.js        # CLI-Tool für Benutzerverwaltung
-├── package.json           # npm-Projektdatei
-├── package-lock.json      # npm Lock-Datei
-├── sap-planner.db         # SQLite-Datenbank (wird automatisch erstellt)
-└── node_modules/          # npm-Abhängigkeiten
+SAP-Basis-Jahresplaner/
+├── ARCHITECTURE.md        # Systemarchitektur und Datenschema
+├── README.md              # Installations- und Betriebsanleitung
+├── sap-planner.html       # Single-File Frontend (React/Babel/Tailwind)
+├── server.js              # Express.js Backend
+├── manage-users.js        # CLI zur Benutzerverwaltung
+├── package.json           # Projektabhängigkeiten und Versionierung
+├── Dockerfile             # Multi-Stage Build-Konfiguration
+├── docker-compose.yml     # Container-Orchestrierung
+├── sap-planner.db         # SQLite-Datenbank
+└── data/                  # Mount-Punkt für Docker-Volumes
 ```
 
 ---
@@ -53,10 +55,10 @@ Planung mit DB/
 
 ```bash
 # In das Projektverzeichnis wechseln
-cd "/Users/juergen/Library/Mobile Documents/com~apple~CloudDocs/Bauhaus/Planung mit DB"
+cd "/Users/juergen/Projekte-Antigravity/SAP-Basis-Jahresplaner"
 
 # Abhängigkeiten installieren
-npm install
+npm ci
 ```
 
 ### Server starten
@@ -85,13 +87,13 @@ http://localhost:3232
 
 | Rolle | Beschreibung | Berechtigungen |
 |-------|--------------|----------------|
-| **admin** | Administrator | Voller Lese- und Schreibzugriff, Benutzerverwaltung |
-| **user** | Standard-Benutzer | Nur Lesezugriff |
+| **teamlead** | Superuser | Volle Kontrolle, Benutzerverwaltung (einschl. Admin), Backup/Restore |
+| **admin** | Administrator | Schreibzugriff auf Planung, Benutzerverwaltung (nur User), Backup/Restore |
+| **user** | Betrachter | Nur Lesezugriff, individueller Dark Mode & Gantt-Sichtbarkeit |
 
-### Standard-Admin-Account
-
-- **Benutzername:** `admin`
-- **Passwort:** `buek45$d4R`
+### Standard-Login
+- **Benutzername:** `teamlead`
+- **Passwort:** `teamlead` (Änderung bei Erstanmeldung erzwungen)
 
 > ⚠️ **Wichtig:** Ändern Sie das Passwort nach der ersten Anmeldung!
 
@@ -101,22 +103,23 @@ http://localhost:3232
 
 ### Tabellen
 
-#### `users` - Benutzerverwaltung
+#### `users` - Benutzerkonten
 | Spalte | Typ | Beschreibung |
 |--------|-----|--------------|
 | id | INTEGER | Primärschlüssel |
-| username | TEXT | Eindeutiger Benutzername |
-| password_hash | TEXT | Gehashtes Passwort (bcrypt) |
-| role | TEXT | 'admin' oder 'user' |
+| username | TEXT | Eindeutiger Benutzername (case-insensitive) |
+| password_hash | TEXT | Gehasht mit bcrypt |
+| role | TEXT | 'teamlead', 'admin', 'user' |
+| must_change_password | BOOLEAN | Flag für Passwortänderungszwang |
+| dark_mode | BOOLEAN | Benutzerspezifische Theme-Einstellung |
 | created_at | DATETIME | Erstellungsdatum |
 
 #### `sessions` - Aktive Sessions
 | Spalte | Typ | Beschreibung |
 |--------|-----|--------------|
-| id | INTEGER | Primärschlüssel |
+| id | TEXT | UUID / Session-Token |
 | user_id | INTEGER | Referenz auf users |
-| token | TEXT | Session-Token |
-| expires_at | DATETIME | Ablaufzeitpunkt |
+| expires_at | DATETIME | Ablaufzeitpunkt (TTL: 24h) |
 
 #### `settings` - Globale Einstellungen
 | Spalte | Typ | Beschreibung |
@@ -145,26 +148,33 @@ http://localhost:3232
 |--------|-----|--------------|
 | id | INTEGER | Primärschlüssel |
 | landscape_id | INTEGER | Referenz auf landscapes |
-| name | TEXT | SID-Name (z.B. "RTT") |
-| is_prd | BOOLEAN | Produktivsystem? |
-| sort_order | INTEGER | Sortierreihenfolge |
+| name | TEXT | SID (z.B. "PRD") |
+| is_prd | BOOLEAN | PRD-Verschlüsselung aktiv? |
+| visible_in_gantt | BOOLEAN | Globaler Default für Sichtbarkeit |
+| notes | TEXT | Zusätzliche Notizen zum System |
+| sort_order | INTEGER | Sortierung innerhalb der Landschaft |
 
-#### `activities` - Geplante Aktivitäten
+#### `activities` - Planungskalender
 | Spalte | Typ | Beschreibung |
 |--------|-----|--------------|
 | id | INTEGER | Primärschlüssel |
 | sid_id | INTEGER | Referenz auf sids |
 | type_id | TEXT | Referenz auf activity_types |
-| start_date | TEXT | Startdatum (YYYY-MM-DD) |
-| duration | INTEGER | Dauer in Arbeitstagen |
-| includes_weekend | BOOLEAN | Wochenende einschließen? |
+| team_member_id | INTEGER | Referenz auf team_members |
+| start_date | TEXT | Startdatum (ISO) |
+| duration | INTEGER | Arbeitstage |
+| includes_weekend | BOOLEAN | WE-Einschluss |
+| start_time | TEXT | Optionale Uhrzeit (HH:MM) |
+| end_time | TEXT | Optionale Uhrzeit (HH:MM) |
 
-#### `maintenance_sundays` - Wartungssonntage
-| Spalte | Typ | Beschreibung |
-|--------|-----|--------------|
-| id | INTEGER | Primärschlüssel (1-4) |
-| date | TEXT | Datum (YYYY-MM-DD) |
-| label | TEXT | Bezeichnung/Label |
+#### `sub_activities` - Detaillierte Planung
+Gleiche Struktur wie `activities`, jedoch referenziert auf eine übergeordnete `activity_id`.
+
+#### `user_sid_visibility` - Personalisierung
+Speichert die Sichtbarkeit von SIDs im Gantt-Chart pro Benutzer.
+
+#### `landscape_locks` - Concurrency Control
+Verhindert gleichzeitiges Bearbeiten derselben Landschaft (Timeout: 5 Min).
 
 #### `logs` - Anwendungsprotokolle
 | Spalte | Typ | Beschreibung |

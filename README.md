@@ -109,11 +109,22 @@ Die Kalenderwochenansicht basiert jetzt auf dem **gewählten Jahr** statt dem ak
 
 Bei Auswahl eines Wartungssonntags scrollt die Gantt-Ansicht automatisch so, dass der gewählte Termin **mittig** im sichtbaren Bereich angezeigt wird. Falls nicht bereits aktiv, wird automatisch die Wochenansicht aktiviert.
 
-### 🔐 Weitere Verbesserungen
+### 🔒 Multi-User Locking
 
-- **Login:** Benutzername ist nicht mehr case-sensitiv (z.B. „kevin" = „Kevin")
-- **Team Management Tab:** Nur sichtbar für Teamlead und Admin
-- **Bundesland-Dropdown:** Kein Dropdown-Pfeil mehr für normale Benutzer (read-only)
+Verhindert Datenverlust durch gleichzeitige Bearbeitung:
+- Wenn ein Benutzer eine Systemlandschaft bearbeitet, wird diese für 5 Minuten für andere Benutzer gesperrt (Read-only Modus).
+- Der Name des sperrenden Benutzers und die Restlaufzeit werden in Echtzeit angezeigt.
+- Sperren werden beim Speichern, Abbrechen oder Navigieren automatisch freigegeben.
+
+### 🛡️ Security Audit (Feb 2026)
+
+Ein umfassendes Sicherheits-Audit wurde durchgeführt. Die Anwendung ist für den internen Einsatz als "Sicher" eingestuft:
+- **Query Safety:** Schutz gegen SQL Injection durch parametrisierte Statements.
+- **Rootless Container:** Docker-Image läuft als non-root User `node`.
+- **Hardened Middleware:** Einsatz von Helmet und Rate-Limiting.
+- Siehe [security_status_report.md](file:///Users/juergen/.gemini/antigravity/brain/96b04c95-df6b-43c7-b797-212f2e5aeef8/security_status_report.md) (internes Dokument) für Details.
+
+### 🔐 Weitere Verbesserungen
 
 ---
 
@@ -123,7 +134,7 @@ Voraussetzung: Node.js Version 20 oder höher (LTS).
 
 1. **Projektverzeichnis öffnen:**
    ```bash
-   cd "/Pfad/zu/Planung mit DB"
+   cd "/Users/juergen/Projekte-Antigravity/SAP-Basis-Jahresplaner"
    ```
 
 2. **Abhängigkeiten installieren:**
