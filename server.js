@@ -215,6 +215,15 @@ const initDatabase = () => {
     CREATE INDEX IF NOT EXISTS idx_activities_sid ON activities(sid_id);
     CREATE INDEX IF NOT EXISTS idx_subactivities_activity ON sub_activities(activity_id);
     CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
+
+    -- Landscape Locks (Multi-User concurrency)
+    CREATE TABLE IF NOT EXISTS landscape_locks (
+      landscape_id INTEGER PRIMARY KEY REFERENCES landscapes(id) ON DELETE CASCADE,
+      user_id INTEGER REFERENCES users(id),
+      username TEXT,
+      expires_at DATETIME NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_landscape_locks_expires ON landscape_locks(expires_at);
   `);
 
   // Migration: Update users table to allow 'teamlead' role
@@ -703,7 +712,45 @@ app.delete('/api/activity-types/:id', authenticate, requireAdmin, (req, res) => 
 // LANDSCAPES ROUTES
 // =========================================================================
 
+const cleanupLocks = () => {
+  db.prepare('DELETE FROM landscape_locks WHERE expires_at < CURRENT_TIMESTAMP').run();
+};
+
+app.get('/api/landscapes/locks', authenticate, (req, res) => {
+  cleanupLocks();
+  const locks = db.prepare('SELECT * FROM landscape_locks').all();
+  res.json(locks);
+});
+
+app.post('/api/landscapes/:id/lock', authenticate, (req, res) => {
+  const { id } = req.params;
+  cleanupLocks();
+
+  const existingLock = db.prepare('SELECT * FROM landscape_locks WHERE landscape_id = ?').get(id);
+
+  if (existingLock) {
+    if (existingLock.user_id !== req.user.id) {
+      return res.status(409).json({ error: `Landschaft ist bereits gesperrt durch ${existingLock.username}` });
+    }
+    // Renew lock
+    db.prepare("UPDATE landscape_locks SET expires_at = datetime('now', '+5 minutes') WHERE landscape_id = ?").run(id);
+  } else {
+    // Acquire new lock
+    db.prepare("INSERT INTO landscape_locks (landscape_id, user_id, username, expires_at) VALUES (?, ?, ?, datetime('now', '+5 minutes'))")
+      .run(id, req.user.id, req.user.username);
+  }
+
+  res.json({ success: true, expires_at: db.prepare('SELECT expires_at FROM landscape_locks WHERE landscape_id = ?').get(id).expires_at });
+});
+
+app.delete('/api/landscapes/:id/lock', authenticate, (req, res) => {
+  const { id } = req.params;
+  db.prepare('DELETE FROM landscape_locks WHERE landscape_id = ? AND user_id = ?').run(id, req.user.id);
+  res.json({ success: true });
+});
+
 app.get('/api/landscapes', authenticate, (req, res) => {
+  cleanupLocks();
   const landscapes = db.prepare('SELECT * FROM landscapes ORDER BY sort_order').all();
 
   // Get SIDs and activities for each landscape
@@ -750,8 +797,11 @@ app.get('/api/landscapes', authenticate, (req, res) => {
       };
     });
 
+    const lock = db.prepare('SELECT user_id, username, expires_at FROM landscape_locks WHERE landscape_id = ?').get(landscape.id);
+
     return {
       ...landscape,
+      lock: lock || null,
       sids: sidsWithActivities
     };
   });
