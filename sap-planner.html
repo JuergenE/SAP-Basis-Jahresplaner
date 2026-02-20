@@ -2465,31 +2465,56 @@
                     {landscape.name}
                   </div>
                   {landscape.sids.filter(sid => sid.visibleInGantt !== false).map(sid => {
-                    // Helper: calculate max lanes needed for this SID
-                    const calculateMaxLanes = () => {
-                      const allSubs = sid.activities
-                        .filter(a => a.type === 'update' && (a.subActivities || []).length > 0)
-                        .flatMap(act => (act.subActivities || []).map(sub => ({
-                          ...sub,
-                          endDate: sub.endDate || calculateEndDate(sub.startDate, sub.duration || 1, year, bundesland, sub.includesWeekend || false)
-                        })));
-                      if (allSubs.length === 0) return 1;
-                      const checkOverlap = (a, b) => new Date(a.startDate) <= new Date(b.endDate) && new Date(b.startDate) <= new Date(a.endDate);
-                      const assigned = [];
-                      let maxL = 1;
-                      allSubs.forEach(sub => {
-                        const usedLanes = new Set();
-                        assigned.forEach(prev => { if (checkOverlap(prev, sub)) usedLanes.add(prev.lane); });
-                        let lane = 0;
-                        while (usedLanes.has(lane)) lane++;
-                        assigned.push({ ...sub, lane });
-                        maxL = Math.max(maxL, lane + 1);
-                      });
-                      return maxL;
+                    // Build a unified flat array of all renderables (normal activities AND subActivities)
+                    const allRenderables = [];
+                    sid.activities.forEach(act => {
+                      if (act.type === 'update' && (act.subActivities || []).length > 0) {
+                        (act.subActivities || []).forEach(sub => {
+                          allRenderables.push({
+                            ...sub,
+                            isSub: true,
+                            parentType: act.type,
+                            endDate: sub.endDate || calculateEndDate(sub.startDate, sub.duration || 1, year, bundesland, sub.includesWeekend || false)
+                          });
+                        });
+                      } else {
+                        allRenderables.push({
+                          ...act,
+                          isSub: false,
+                          endDate: act.endDate || calculateEndDate(act.startDate, act.duration || 1, year, bundesland, act.includesWeekend || false)
+                        });
+                      }
+                    });
+
+                    const checkOverlap = (a, b) => new Date(a.startDate) <= new Date(b.endDate) && new Date(b.startDate) <= new Date(a.endDate);
+                    const assigned = [];
+                    let maxLanes = 1;
+
+                    // Sort by start date for a better left-to-right packing
+                    allRenderables.sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+
+                    allRenderables.forEach(item => {
+                      const usedLanes = new Set();
+                      assigned.forEach(prev => { if (checkOverlap(prev, item)) usedLanes.add(prev.lane); });
+                      let lane = 0;
+                      while (usedLanes.has(lane)) lane++;
+                      assigned.push({ ...item, lane });
+                      maxLanes = Math.max(maxLanes, lane + 1);
+                    });
+                    if (assigned.length === 0) maxLanes = 1;
+
+                    // Row height and bar sizing based on lanes
+                    const barHeight = maxLanes === 1 ? 24 : maxLanes === 2 ? 20 : maxLanes === 3 ? 16 : 12;
+                    const baseTop = 4;
+                    const rowHeight = Math.max(40, baseTop + (maxLanes * (barHeight + 2)) + 4);
+
+                    const darkenColor = (color, amt) => {
+                      const hex = (color || '#3B82F6').replace('#', '');
+                      const r = Math.max(0, parseInt(hex.substring(0, 2), 16) - amt);
+                      const g = Math.max(0, parseInt(hex.substring(2, 4), 16) - amt);
+                      const b = Math.max(0, parseInt(hex.substring(4, 6), 16) - amt);
+                      return `rgb(${r}, ${g}, ${b})`;
                     };
-                    const maxLanes = calculateMaxLanes();
-                    // Row heights: 1-2 lanes=40px, 3 lanes=56px (3*16+8), 4+=+14px per lane
-                    const rowHeight = maxLanes <= 2 ? 40 : maxLanes === 3 ? 56 : 40 + (maxLanes * 14);
 
                     return (
                       <div key={sid.id} className="flex items-stretch hover:bg-gray-50">
@@ -2526,33 +2551,18 @@
                             })}
                           </div>
 
-                          {/* Activity bars - split at weekends for activities without WE flag */}
-                          {sid.activities.map(activity => {
-                            const actType = activityTypes.find(t => t.id === activity.type);
+                          {/* Unified Activity bars render */}
+                          {assigned.flatMap(item => {
+                            const actType = activityTypes.find(t => t.id === (item.isSub ? item.parentType : item.type));
+                            const baseColor = actType?.color || '#3B82F6';
+                            const barColor = item.lane % 2 === 0 ? baseColor : darkenColor(baseColor, 40);
+                            const topOffset = baseTop + (item.lane * (barHeight + 2));
 
-                            // Skip Update/Upgrade activities that have sub-activities (they will be rendered separately)
-                            if (activity.type === 'update' && (activity.subActivities || []).length > 0) {
-                              return null;
-                            }
+                            const segments = getActivitySegments(item.startDate, item.endDate, item.includesWeekend || false, holidays);
 
-                            const endDate = activity.endDate || calculateEndDate(
-                              activity.startDate,
-                              activity.duration || 1,
-                              year,
-                              bundesland,
-                              activity.includesWeekend || false
-                            );
-
-                            const segments = getActivitySegments(
-                              activity.startDate,
-                              endDate,
-                              activity.includesWeekend || false,
-                              holidays
-                            );
-
-                            const frame = (segments.length > 1 && !activity.includesWeekend) ? (() => {
-                              const startIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(new Date(activity.startDate)));
-                              const endIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(new Date(endDate)));
+                            const frame = (segments.length > 1 && !item.includesWeekend) ? (() => {
+                              const startIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(new Date(item.startDate)));
+                              const endIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(new Date(item.endDate)));
 
                               if (endIdx < 0 && startIdx < 0) return null;
                               if (startIdx >= 0 && startIdx >= visibleDays.length) return null;
@@ -2567,15 +2577,15 @@
 
                               return (
                                 <div
-                                  key={`frame-${activity.id}`}
+                                  key={`frame-${item.isSub ? 'sub-' : ''}${item.id}`}
                                   className="absolute rounded border border-solid pointer-events-none"
                                   style={{
                                     left: `${lPct}%`,
                                     width: `${wPct}%`,
-                                    borderColor: actType?.color,
+                                    borderColor: item.isSub ? barColor : actType?.color,
                                     borderWidth: '1px',
-                                    top: '8px',
-                                    height: '24px',
+                                    top: `${topOffset}px`,
+                                    height: `${barHeight}px`,
                                     zIndex: 5
                                   }}
                                 />
@@ -2585,10 +2595,8 @@
                             return [
                               frame,
                               ...segments.map((segment, segIdx) => {
-                                const segStartStr = segment.start;
-                                const segEndStr = segment.end;
-                                const startIdx = visibleDays.findIndex(d => formatDateISO(d) === segStartStr);
-                                const endIdx = visibleDays.findIndex(d => formatDateISO(d) === segEndStr);
+                                const startIdx = visibleDays.findIndex(d => formatDateISO(d) === segment.start);
+                                const endIdx = visibleDays.findIndex(d => formatDateISO(d) === segment.end);
                                 if (endIdx < 0 && startIdx < 0) return null;
                                 const effectiveStartIdx = startIdx >= 0 ? startIdx : 0;
                                 const effectiveEndIdx = endIdx >= 0 ? endIdx : visibleDays.length - 1;
@@ -2599,142 +2607,42 @@
                                 if (widthPct <= 0) return null;
                                 const isFirstSegment = segIdx === 0;
 
+                                let titleStr = '';
+                                if (item.isSub) {
+                                  titleStr = `${item.name}: ${formatDateDE(item.startDate)} - ${formatDateDE(item.endDate)} (${item.duration} AT)${item.start_time && item.end_time ? ` (${item.start_time} - ${item.end_time})` : ''}${item.teamMemberId ? ` [${teamMembers.find(m => m.id === parseInt(item.teamMemberId))?.abbreviation || '?'}]` : ''}`;
+                                } else {
+                                  let teamInfo = '';
+                                  if (item.teamMemberId) {
+                                    const member = teamMembers.find(m => m.id === parseInt(item.teamMemberId));
+                                    teamInfo = member ? ` [${member.abbreviation}]` : '';
+                                  }
+                                  const timeInfo = (item.start_time && item.end_time) ? ` (${item.start_time} - ${item.end_time})` : '';
+                                  titleStr = `${actType?.label}: ${formatDateDE(item.startDate)} - ${formatDateDE(item.endDate)} (${item.duration} Arbeitstage)${timeInfo}${teamInfo}${segments.length > 1 ? ` [Teil ${segIdx + 1}/${segments.length}]` : ''}`;
+                                }
+
+                                const labelStr = item.isSub ? item.name : actType?.label;
+
                                 return (
                                   <div
-                                    key={`${activity.id}-${segIdx}`}
-                                    className="activity-bar absolute h-6 rounded text-xs text-white flex items-center justify-center cursor-pointer overflow-hidden"
+                                    key={`${item.isSub ? 'sub-' : ''}${item.id}-${segIdx}`}
+                                    className="activity-bar absolute rounded text-xs text-white flex items-center justify-center cursor-pointer overflow-hidden"
                                     style={{
                                       left: `${leftPct}%`,
                                       width: `${Math.max(widthPct, 0.5)}%`,
-                                      backgroundColor: actType?.color,
-                                      top: '8px',
+                                      backgroundColor: item.isSub ? barColor : actType?.color,
+                                      top: `${topOffset}px`,
+                                      height: `${barHeight}px`,
                                       minWidth: '8px',
                                       zIndex: 10
                                     }}
-                                    title={(() => {
-                                      const hasSubActs = activity.type === 'update' && (activity.subActivities || []).length > 0;
-                                      let teamInfo = '';
-                                      if (hasSubActs) {
-                                        const subMemberIds = (activity.subActivities || []).map(sub => sub.teamMemberId).filter(id => id);
-                                        const uniqueMembers = [...new Set(subMemberIds)];
-                                        if (uniqueMembers.length === 1) {
-                                          const member = teamMembers.find(m => m.id === parseInt(uniqueMembers[0]));
-                                          teamInfo = member ? ` [${member.abbreviation}]` : '';
-                                        } else if (uniqueMembers.length > 1) {
-                                          teamInfo = ' [Multi]';
-                                        }
-                                      } else if (activity.teamMemberId) {
-                                        const member = teamMembers.find(m => m.id === parseInt(activity.teamMemberId));
-                                        teamInfo = member ? ` [${member.abbreviation}]` : '';
-                                      }
-                                      const timeInfo = (activity.start_time && activity.end_time) ? ` (${activity.start_time} - ${activity.end_time})` : '';
-                                      return `${actType?.label}: ${formatDateDE(activity.startDate)} - ${formatDateDE(activity.endDate)} (${activity.duration} Arbeitstage)${timeInfo}${teamInfo}${segments.length > 1 ? ` [Teil ${segIdx + 1}/${segments.length}]` : ''}`;
-                                    })()}
+                                    title={titleStr}
                                   >
-                                    {isFirstSegment && <span className="truncate px-1">{actType?.label}</span>}
+                                    {(isFirstSegment || item.isSub) && <span className="truncate px-1" style={{ fontSize: maxLanes > 1 ? '8px' : '12px' }}>{labelStr}</span>}
                                   </div>
                                 );
                               })
                             ];
                           })}
-
-                          {/* Sub-Activity bars for Update/Upgrade activities - with multi-lane support */}
-                          {(() => {
-                            const actType = activityTypes.find(t => t.id === 'update');
-                            const allSubs = sid.activities
-                              .filter(a => a.type === 'update' && (a.subActivities || []).length > 0)
-                              .flatMap(act => (act.subActivities || []).map(sub => ({
-                                ...sub,
-                                endDate: sub.endDate || calculateEndDate(sub.startDate, sub.duration || 1, year, bundesland, sub.includesWeekend || false)
-                              })));
-                            if (allSubs.length === 0) return null;
-
-                            const checkOverlap = (a, b) => new Date(a.startDate) <= new Date(b.endDate) && new Date(b.startDate) <= new Date(a.endDate);
-                            const assigned = [];
-                            allSubs.forEach(sub => {
-                              const usedLanes = new Set();
-                              assigned.forEach(prev => { if (checkOverlap(prev, sub)) usedLanes.add(prev.lane); });
-                              let lane = 0;
-                              while (usedLanes.has(lane)) lane++;
-                              assigned.push({ ...sub, lane });
-                            });
-
-                            // Bar heights: 1 lane=24px, 2 lanes=20px, 3 lanes=16px, 4+=12px
-                            const barHeight = maxLanes === 1 ? 24 : maxLanes === 2 ? 20 : maxLanes === 3 ? 16 : 12;
-                            const baseTop = 4;
-                            const baseColor = actType?.color || '#3B82F6';
-                            const darkenColor = (color, amt) => {
-                              const hex = (color || '#3B82F6').replace('#', '');
-                              const r = Math.max(0, parseInt(hex.substring(0, 2), 16) - amt);
-                              const g = Math.max(0, parseInt(hex.substring(2, 4), 16) - amt);
-                              const b = Math.max(0, parseInt(hex.substring(4, 6), 16) - amt);
-                              return `rgb(${r}, ${g}, ${b})`;
-                            };
-
-                            return assigned.flatMap(subActivity => {
-                              const subSegments = getActivitySegments(subActivity.startDate, subActivity.endDate, subActivity.includesWeekend || false, holidays);
-                              const frame = (subSegments.length > 1 && !subActivity.includesWeekend) ? (() => {
-                                const startIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(new Date(subActivity.startDate)));
-                                const endIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(new Date(subActivity.endDate)));
-
-                                if (endIdx < 0 && startIdx < 0) return null;
-                                if (startIdx >= 0 && startIdx >= visibleDays.length) return null;
-                                if (endIdx >= 0 && endIdx < 0) return null;
-
-                                const effStart = startIdx >= 0 ? startIdx : 0;
-                                const effEnd = endIdx >= 0 ? endIdx : visibleDays.length - 1;
-                                const lPct = (effStart / visibleDays.length) * 100;
-                                const wPct = ((effEnd - effStart + 1) / visibleDays.length) * 100;
-                                if (wPct <= 0) return null;
-
-                                const tOffset = baseTop + (subActivity.lane * (barHeight + 2));
-                                const bColor = subActivity.lane % 2 === 0 ? baseColor : darkenColor(baseColor, 60);
-
-                                return (
-                                  <div
-                                    key={`sub-frame-${subActivity.id}`}
-                                    className="absolute rounded border border-solid pointer-events-none"
-                                    style={{
-                                      left: `${lPct}%`,
-                                      width: `${wPct}%`,
-                                      borderColor: bColor,
-                                      borderWidth: '1px',
-                                      top: `${tOffset}px`,
-                                      height: `${barHeight}px`,
-                                      zIndex: 5
-                                    }}
-                                  />
-                                );
-                              })() : null;
-
-                              return [
-                                frame,
-                                ...subSegments.map((segment, segIdx) => {
-                                  const startIdx = visibleDays.findIndex(d => formatDateISO(d) === segment.start);
-                                  const endIdx = visibleDays.findIndex(d => formatDateISO(d) === segment.end);
-                                  if (endIdx < 0 && startIdx < 0) return null;
-                                  const effectiveStartIdx = startIdx >= 0 ? startIdx : 0;
-                                  const effectiveEndIdx = endIdx >= 0 ? endIdx : visibleDays.length - 1;
-                                  const leftPct = (effectiveStartIdx / visibleDays.length) * 100;
-                                  const widthPct = ((effectiveEndIdx - effectiveStartIdx + 1) / visibleDays.length) * 100;
-                                  if (widthPct <= 0) return null;
-                                  const topOffset = baseTop + (subActivity.lane * (barHeight + 2));
-                                  const barColor = subActivity.lane % 2 === 0 ? baseColor : darkenColor(baseColor, 60);
-
-                                  return (
-                                    <div
-                                      key={`sub-${subActivity.id}-${segIdx}`}
-                                      className="activity-bar absolute rounded text-xs text-white flex items-center justify-center cursor-pointer overflow-hidden"
-                                      style={{ left: `${leftPct}%`, width: `${Math.max(widthPct, 0.5)}%`, backgroundColor: barColor, top: `${topOffset}px`, height: `${barHeight}px`, minWidth: '8px', zIndex: 10 }}
-                                      title={`${subActivity.name}: ${formatDateDE(subActivity.startDate)} - ${formatDateDE(subActivity.endDate)} (${subActivity.duration} AT)${subActivity.start_time && subActivity.end_time ? ` (${subActivity.start_time} - ${subActivity.end_time})` : ''}${subActivity.teamMemberId ? ` [${teamMembers.find(m => m.id === parseInt(subActivity.teamMemberId))?.abbreviation || '?'}]` : ''}`}
-                                    >
-                                      <span className="truncate px-1" style={{ fontSize: maxLanes > 1 ? '8px' : '12px' }}>{subActivity.name}</span>
-                                    </div>
-                                  );
-                                })
-                              ];
-                            });
-                          })()}
                         </div>
                       </div>
                     );
