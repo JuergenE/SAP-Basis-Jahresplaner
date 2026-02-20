@@ -228,6 +228,35 @@ const initDatabase = () => {
       expires_at DATETIME NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_landscape_locks_expires ON landscape_locks(expires_at);
+
+    -- Matrix Columns (Qualifikationen)
+    CREATE TABLE IF NOT EXISTS matrix_columns (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0
+    );
+
+    -- Matrix Values (Qualifikationen)
+    CREATE TABLE IF NOT EXISTS matrix_values (
+      team_member_id INTEGER REFERENCES team_members(id) ON DELETE CASCADE,
+      column_id TEXT REFERENCES matrix_columns(id) ON DELETE CASCADE,
+      level INTEGER DEFAULT 0,
+      PRIMARY KEY (team_member_id, column_id)
+    );
+
+    -- Trainings (Schulungen)
+    CREATE TABLE IF NOT EXISTS trainings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      participants TEXT DEFAULT '',
+      course TEXT DEFAULT '',
+      topic TEXT DEFAULT '',
+      cost TEXT DEFAULT '',
+      location TEXT DEFAULT '',
+      date1 TEXT DEFAULT '',
+      date2 TEXT DEFAULT '',
+      date3 TEXT DEFAULT '',
+      days INTEGER DEFAULT 0
+    );
   `);
 
   // Migration: Update users table to allow 'teamlead' role
@@ -1927,6 +1956,156 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
   } catch (error) {
     console.error('Backup import error:', error);
     res.status(500).json({ error: 'Fehler beim Import: ' + error.message });
+  }
+});
+
+// =========================================================================
+// API: MATRIX & TRAININGS 
+// =========================================================================
+
+// Get Matrix (Columns and Values)
+app.get('/api/matrix', authenticateToken, (req, res) => {
+  try {
+    const columns = db.prepare('SELECT * FROM matrix_columns ORDER BY sort_order ASC, name ASC').all();
+    const values = db.prepare('SELECT * FROM matrix_values').all();
+    res.json({ columns, values });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create Matrix Column
+app.post('/api/matrix/columns', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Name ist erforderlich' });
+
+    const id = uuidv4();
+    const sort_order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM matrix_columns').get().next;
+
+    db.prepare('INSERT INTO matrix_columns (id, name, sort_order) VALUES (?, ?, ?)')
+      .run(id, name, sort_order);
+
+    logAction(req.user.id, req.user.username, 'CREATE_MATRIX_COLUMN', { columnId: id, name });
+    res.json({ id, name, sort_order });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update Matrix Column
+app.put('/api/matrix/columns/:id', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const { name, sort_order } = req.body;
+    const stmt = db.prepare('UPDATE matrix_columns SET name = COALESCE(?, name), sort_order = COALESCE(?, sort_order) WHERE id = ?');
+    stmt.run(name, sort_order, req.params.id);
+
+    // Sort collision logic can be complex, keeping it simple for now
+    logAction(req.user.id, req.user.username, 'UPDATE_MATRIX_COLUMN', { columnId: req.params.id, name });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete Matrix Column
+app.delete('/api/matrix/columns/:id', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    db.prepare('DELETE FROM matrix_columns WHERE id = ?').run(req.params.id);
+    logAction(req.user.id, req.user.username, 'DELETE_MATRIX_COLUMN', { columnId: req.params.id });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Upsert Matrix Value (Everyone can edit)
+app.put('/api/matrix/values', authenticateToken, (req, res) => {
+  try {
+    const { teamMemberId, columnId, level } = req.body;
+    if (!teamMemberId || !columnId || level === undefined) {
+      return res.status(400).json({ error: 'teamMemberId, columnId und level erforderlich' });
+    }
+
+    const count = db.prepare('SELECT count(*) as c FROM matrix_values WHERE team_member_id = ? AND column_id = ?').get(teamMemberId, columnId).c;
+
+    if (count > 0) {
+      db.prepare('UPDATE matrix_values SET level = ? WHERE team_member_id = ? AND column_id = ?').run(level, teamMemberId, columnId);
+    } else {
+      db.prepare('INSERT INTO matrix_values (team_member_id, column_id, level) VALUES (?, ?, ?)').run(teamMemberId, columnId, level);
+    }
+
+    logAction(req.user.id, req.user.username, 'UPDATE_MATRIX_VALUE', { teamMemberId, columnId, level });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get Trainings
+app.get('/api/trainings', authenticateToken, (req, res) => {
+  try {
+    const trainings = db.prepare('SELECT * FROM trainings ORDER BY id ASC').all();
+    res.json(trainings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create Training 
+app.post('/api/trainings', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const result = db.prepare(`
+      INSERT INTO trainings (participants, course, topic, cost, location, date1, date2, date3, days)
+      VALUES ('', 'Neuer Kurs', '', '', '', '', '', '', 0)
+    `).run();
+
+    logAction(req.user.id, req.user.username, 'CREATE_TRAINING', { trainingId: result.lastInsertRowid });
+    res.json({ id: result.lastInsertRowid, course: 'Neuer Kurs', participants: '', topic: '', cost: '', location: '', date1: '', date2: '', date3: '', days: 0 });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update Training
+app.put('/api/trainings/:id', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    const { participants, course, topic, cost, location, date1, date2, date3, days } = req.body;
+
+    // Dynamically build the update query to only update provided fields
+    const updates = [];
+    const params = [];
+
+    const fields = { participants, course, topic, cost, location, date1, date2, date3, days };
+
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== undefined) {
+        updates.push(`${key} = ?`);
+        params.push(value);
+      }
+    }
+
+    if (updates.length === 0) return res.json({ success: true });
+
+    params.push(req.params.id);
+
+    db.prepare(`UPDATE trainings SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    logAction(req.user.id, req.user.username, 'UPDATE_TRAINING', { trainingId: req.params.id });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete Training
+app.delete('/api/trainings/:id', authenticateToken, requireAdmin, (req, res) => {
+  try {
+    db.prepare('DELETE FROM trainings WHERE id = ?').run(req.params.id);
+    logAction(req.user.id, req.user.username, 'DELETE_TRAINING', { trainingId: req.params.id });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

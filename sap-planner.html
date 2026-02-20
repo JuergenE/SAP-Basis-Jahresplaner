@@ -625,6 +625,18 @@
       async toggleSidVisibility(sidId, visible) {
         return this.request(`/api/sids/${sidId}/visibility`, { method: 'PATCH', body: JSON.stringify({ visible_in_gantt: visible }) });
       }
+
+      // Matrix & Trainings
+      async getMatrix() { return this.request('/api/matrix'); }
+      async createMatrixColumn(name) { return this.request('/api/matrix/columns', { method: 'POST', body: JSON.stringify({ name }) }); }
+      async updateMatrixColumn(id, name, sort_order) { return this.request(`/api/matrix/columns/${id}`, { method: 'PUT', body: JSON.stringify({ name, sort_order }) }); }
+      async deleteMatrixColumn(id) { return this.request(`/api/matrix/columns/${id}`, { method: 'DELETE' }); }
+      async updateMatrixValue(teamMemberId, columnId, level) { return this.request('/api/matrix/values', { method: 'PUT', body: JSON.stringify({ teamMemberId, columnId, level }) }); }
+
+      async getTrainings() { return this.request('/api/trainings'); }
+      async createTraining() { return this.request('/api/trainings', { method: 'POST' }); }
+      async updateTraining(id, data) { return this.request(`/api/trainings/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+      async deleteTraining(id) { return this.request(`/api/trainings/${id}`, { method: 'DELETE' }); }
     }
 
     const api = new ApiClient();
@@ -1088,6 +1100,10 @@
       const [myLocks, setMyLocks] = useState(new Set());
       // Online Users
       const [onlineUsers, setOnlineUsers] = useState([]);
+      // Skills & Schulungen
+      const [matrixColumns, setMatrixColumns] = useState([]);
+      const [matrixValues, setMatrixValues] = useState([]);
+      const [trainings, setTrainings] = useState([]);
 
       // Check permissions
       // canEdit: Admin OR Teamlead can edit landscapes, SIDs, activities
@@ -1099,12 +1115,14 @@
       // Load data from API
       const loadData = useCallback(async () => {
         try {
-          const [settings, types, lands, sundays, members] = await Promise.all([
+          const [settings, types, lands, sundays, members, matrix, trns] = await Promise.all([
             api.getSettings(),
             api.getActivityTypes(),
             api.getLandscapes(),
             api.getMaintenanceSundays().catch(() => []),
-            api.getTeamMembers().catch(() => [])
+            api.getTeamMembers().catch(() => []),
+            api.getMatrix().catch(() => ({ columns: [], values: [] })),
+            api.getTrainings().catch(() => [])
           ]);
 
           if (settings.year) setYear(parseInt(settings.year));
@@ -1113,6 +1131,9 @@
           if (v) setAppVersion(v);
           if (types.length > 0) setActivityTypes(types);
           setTeamMembers(members);
+          setMatrixColumns(matrix.columns || []);
+          setMatrixValues(matrix.values || []);
+          setTrainings(trns || []);
 
           // Calculate endDate for all activities and sub-activities on load
           const loadedYear = settings.year ? parseInt(settings.year) : new Date().getFullYear();
@@ -3071,15 +3092,26 @@
                 📊 Gantt-Ansicht
               </button>
               {canEdit && (
-                <button
-                  onClick={() => setActiveTab('team')}
-                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'team'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
-                    }`}
-                >
-                  👥 Team Management
-                </button>
+                <>
+                  <button
+                    onClick={() => setActiveTab('team')}
+                    className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'team'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                      }`}
+                  >
+                    👥 Team-Auslastung
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('skills')}
+                    className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'skills'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-gray-600 hover:bg-gray-100'
+                      }`}
+                  >
+                    🎓 Skills & Schulungen
+                  </button>
+                </>
               )}
             </div>
 
@@ -3483,20 +3515,40 @@
                                         disabled={!canEdit || isLockedByOther}
                                         className={`px-2 py-1 border border-gray-300 rounded text-sm w-32 ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
                                       />
-                                      <input
-                                        type="date"
-                                        value={subActivity.startDate}
-                                        onChange={(e) => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'startDate', e.target.value)}
-                                        disabled={!canEdit || isLockedByOther}
-                                        className={`px-1 py-0.5 border border-gray-300 rounded text-xs ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
-                                      />
-                                      <input
-                                        type="number"
-                                        value={subActivity.duration}
-                                        onChange={(e) => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'duration', parseInt(e.target.value) || 1)}
-                                        disabled={!canEdit || isLockedByOther}
-                                        className={`px-1 py-0.5 border border-gray-300 rounded w-12 text-xs ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
-                                      />
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-sm text-gray-600">Start:</span>
+                                        <input
+                                          type="date"
+                                          value={subActivity.startDate}
+                                          onChange={(e) => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'startDate', e.target.value)}
+                                          disabled={!canEdit || isLockedByOther}
+                                          className={`px-1 py-0.5 border border-gray-300 rounded text-xs ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-sm text-gray-600">Dauer:</span>
+                                        <input
+                                          type="number"
+                                          value={subActivity.duration}
+                                          onChange={(e) => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'duration', parseInt(e.target.value) || 1)}
+                                          disabled={!canEdit || isLockedByOther}
+                                          className={`px-1 py-0.5 border border-gray-300 rounded w-12 text-xs ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-sm text-gray-600">Ende:</span>
+                                        <span className="font-medium text-sm w-20">{subActivity.endDate ? formatDateDE(subActivity.endDate) : '-'}</span>
+                                      </div>
+                                      <label className="flex items-center gap-1 text-sm text-gray-600 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={subActivity.includesWeekend}
+                                          onChange={(e) => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'includesWeekend', e.target.checked)}
+                                          disabled={!canEdit || isLockedByOther}
+                                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        WE
+                                      </label>
                                     </div>
                                     <div className="flex items-center gap-2 ml-auto pl-2 border-l border-gray-200">
                                       <div className="flex items-center gap-1 w-[110px] justify-center">
@@ -3529,12 +3581,12 @@
             </div >
           </div >
 
-          {/* Team Management Tab */}
+          {/* Team-Auslastung Tab */}
           {
             activeTab === 'team' && (
               <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto">
                 <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-gray-800">👥 Team Management</h2>
+                  <h2 className="text-2xl font-bold text-gray-800">👥 Team-Auslastung</h2>
                   {canManageTeam && (
                     <button
                       onClick={exportTeamCSV}
@@ -3686,19 +3738,10 @@
                             )}
                             {canManageTeam && (
                               <td className="p-3 text-center">
-                                <input
-                                  type="number"
-                                  value={member.training_days || 0}
-                                  onChange={async (e) => {
-                                    const val = Math.min(24, Math.max(0, parseInt(e.target.value) || 0));
-                                    try {
-                                      await api.updateTeamMember(member.id, { training_days: val });
-                                      setTeamMembers(prev => prev.map(m => m.id === member.id ? { ...m, training_days: val } : m));
-                                    } catch (err) { alert(err.message); }
-                                  }}
-                                  className="w-16 text-center border border-gray-300 rounded px-1 py-0.5"
-                                  max="24"
-                                />
+                                {/* Training days are now calculated dynamically from the Trainings Matrix */}
+                                <span className="font-semibold text-gray-700">
+                                  {trainings.filter(t => t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)}
+                                </span>
                               </td>
                             )}
                             {canManageTeam && <td className="p-3 text-center">{quarterDays[0]}</td>}
@@ -3707,7 +3750,11 @@
                             {canManageTeam && <td className="p-3 text-center">{quarterDays[3]}</td>}
                             <td className="p-3 text-right font-semibold">{totalDays} Tage</td>
                             <td className="p-3 text-center font-bold">
-                              <span>{(member.working_days || 0) - (member.training_days || 0) - totalDays}</span>
+                              <span>
+                                {(member.working_days || 0)
+                                  - trainings.filter(t => t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)
+                                  - totalDays}
+                              </span>
                             </td>
                             {canManageTeam && (
                               <td className="p-3 text-right">
@@ -4242,6 +4289,314 @@
                     </button>
                   </div>
                 </div>
+              </div>
+            )
+          }
+
+          {/* Skills & Schulungen Tab */}
+          {
+            activeTab === 'skills' && (
+              <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme">
+                <div className="flex justify-between items-center mb-6 border-b pb-4">
+                  <h2 className="text-2xl font-bold text-gray-800">🎓 Skills & Schulungen</h2>
+                  <div className="flex gap-2">
+                    {canEdit && (
+                      <button
+                        onClick={async () => {
+                          const name = prompt('Name des neuen Skills:');
+                          if (name?.trim()) {
+                            try {
+                              const newCol = await api.createMatrixColumn(name.trim());
+                              setMatrixColumns([...matrixColumns, newCol]);
+                            } catch (error) {
+                              alert('Fehler beim Erstellen der Spalte: ' + error.message);
+                            }
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium text-sm transition-colors"
+                      >
+                        + Skill hinzufügen
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Qualifikationsmatrix */}
+                <div className="mb-12">
+                  <h3 className="text-xl font-semibold mb-4 text-gray-700">Qualifikationsmatrix</h3>
+                  <div className="overflow-x-auto pb-4">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr>
+                          <th className="p-3 text-left w-64 border-b border-gray-300 bg-gray-50 text-gray-700 font-semibold sticky left-0 z-10 shadow-[1px_0_0_#d1d5db]">
+                            Teammitglied
+                          </th>
+                          {matrixColumns.map(col => (
+                            <th key={col.id} className="p-2 border-b border-gray-300 bg-gray-50 text-center min-w-[40px]">
+                              <div className="flex flex-col items-center justify-end h-32">
+                                <span
+                                  className="transform -rotate-180"
+                                  style={{ writingMode: 'vertical-rl' }}
+                                  title={canEdit ? 'Klicken zum Löschen' : ''}
+                                  onClick={async () => {
+                                    if (!canEdit) return;
+                                    if (confirm(`Spalte "${col.name}" wirklich löschen?`)) {
+                                      try {
+                                        await api.deleteMatrixColumn(col.id);
+                                        setMatrixColumns(matrixColumns.filter(c => c.id !== col.id));
+                                        setMatrixValues(matrixValues.filter(v => v.column_id !== col.id));
+                                      } catch (error) {
+                                        alert(error.message);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <span className={`text-sm font-medium ${canEdit ? 'cursor-pointer hover:text-red-600' : 'text-gray-700'}`}>
+                                    {col.name}
+                                  </span>
+                                </span>
+                              </div>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teamMembers.map((member, index) => (
+                          <tr key={member.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="p-3 border-b border-gray-200 font-medium text-gray-800 sticky left-0 z-10 bg-inherit shadow-[1px_0_0_#e5e7eb]">
+                              {member.name}
+                            </td>
+                            {matrixColumns.map(col => {
+                              const val = matrixValues.find(v => v.team_member_id === member.id && v.column_id === col.id);
+                              const level = val ? val.level : 0;
+
+                              let bgColor = 'bg-transparent text-transparent'; // Default is invisible (0)
+
+                              if (level === 1) bgColor = 'bg-red-500 text-white';
+                              else if (level === 2) bgColor = 'bg-orange-500 text-white';
+                              else if (level === 3) bgColor = 'bg-[#92d050] text-gray-900'; // Hellgrün
+                              else if (level === 4) bgColor = 'bg-[#00b050] text-white'; // Dunkelgrün
+
+                              return (
+                                <td key={col.id} className="p-2 border-b border-gray-200 text-center">
+                                  <div className="flex justify-center">
+                                    <button
+                                      disabled={!canEdit}
+                                      onClick={async () => {
+                                        if (!canEdit) return;
+                                        const nextLevel = level >= 4 ? 0 : level + 1;
+                                        try {
+                                          await api.updateMatrixValue(member.id, col.id, nextLevel);
+                                          // Update local state explicitly instead of waiting for reload
+                                          setMatrixValues(prev => {
+                                            const filtered = prev.filter(v => !(v.team_member_id === member.id && v.column_id === col.id));
+                                            return [...filtered, { team_member_id: member.id, column_id: col.id, level: nextLevel }];
+                                          });
+                                        } catch (error) {
+                                          alert(error.message);
+                                        }
+                                      }}
+                                      className={`w-8 h-8 rounded shrink-0 flex items-center justify-center font-bold text-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${bgColor} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                                      title={level > 0 ? `Level: ${level}` : 'Kein Level'}
+                                    >
+                                      {level > 0 ? level : ''}
+                                    </button>
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                        {teamMembers.length === 0 && (
+                          <tr>
+                            <td colSpan={matrixColumns.length + 1} className="p-6 text-center text-gray-500 italic">
+                              Bitte legen Sie zuerst Teammitglieder im Reiter "Team-Auslastung" an.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Schulungen Tabelle */}
+                <div>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-semibold text-gray-700">Schulungen</h3>
+                    {canEdit && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const newTr = await api.createTraining();
+                            setTrainings([...trainings, newTr]);
+                          } catch (error) {
+                            alert(error.message);
+                          }
+                        }}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium text-sm transition-colors"
+                      >
+                        + Schulung eintragen
+                      </button>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse border border-[#00b0f0]">
+                      <thead>
+                        <tr className="bg-[#00b0f0] text-white">
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Teilnehmer</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Kurs</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Thema</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Kosten</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Location</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-center">Termin1</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-center">Termin2</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-center">Termin3</th>
+                          <th className="p-2 border border-[#00b0f0] font-semibold text-center whitespace-nowrap">Anzahl Tage</th>
+                          {canEdit && <th className="p-2 border border-[#00b0f0] font-semibold text-center w-12">Aktion</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trainings.map((tr, index) => (
+                          <tr key={tr.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                            <td className="p-0 border border-gray-300">
+                              <input
+                                type="text"
+                                value={tr.participants || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { participants: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, participants: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
+                                placeholder="Peter, Hans..."
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300">
+                              <input
+                                type="text"
+                                value={tr.course || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { course: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, course: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300">
+                              <input
+                                type="text"
+                                value={tr.topic || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { topic: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, topic: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300 min-w-28">
+                              <input
+                                type="text"
+                                value={tr.cost || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { cost: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, cost: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
+                                placeholder="€..."
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300">
+                              <input
+                                type="text"
+                                value={tr.location || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { location: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, location: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300 w-28">
+                              <input
+                                type="date"
+                                value={tr.date1 || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { date1: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date1: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-xs"
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300 w-28">
+                              <input
+                                type="date"
+                                value={tr.date2 || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { date2: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date2: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-xs"
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300 w-28">
+                              <input
+                                type="date"
+                                value={tr.date3 || ''}
+                                onChange={(e) => api.updateTraining(tr.id, { date3: e.target.value }).then(() => {
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date3: e.target.value } : t));
+                                })}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-xs"
+                              />
+                            </td>
+                            <td className="p-0 border border-gray-300 w-16">
+                              <input
+                                type="number"
+                                min="0"
+                                value={tr.days || ''}
+                                onChange={(e) => {
+                                  const v = parseInt(e.target.value) || 0;
+                                  api.updateTraining(tr.id, { days: v }).then(() => {
+                                    setTrainings(trainings.map(t => t.id === tr.id ? { ...t, days: v } : t));
+                                  });
+                                }}
+                                disabled={!canEdit}
+                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm text-center"
+                              />
+                            </td>
+                            {canEdit && (
+                              <td className="p-2 border border-gray-300 text-center">
+                                <button
+                                  onClick={async () => {
+                                    if (confirm('Schulung wirklich löschen?')) {
+                                      try {
+                                        await api.deleteTraining(tr.id);
+                                        setTrainings(trainings.filter(t => t.id !== tr.id));
+                                      } catch (error) {
+                                        alert(error.message);
+                                      }
+                                    }
+                                  }}
+                                  className="text-red-500 hover:text-red-700 font-bold"
+                                  title="Schulung löschen"
+                                >
+                                  ×
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                        {trainings.length === 0 && (
+                          <tr>
+                            <td colSpan={canEdit ? 10 : 9} className="p-6 text-center text-gray-500 italic border border-gray-300">
+                              Noch keine Schulungen eingetragen.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
               </div>
             )
           }
