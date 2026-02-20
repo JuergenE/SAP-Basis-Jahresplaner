@@ -1964,7 +1964,7 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
 // =========================================================================
 
 // Get Matrix (Columns and Values)
-app.get('/api/matrix', authenticateToken, (req, res) => {
+app.get('/api/matrix', authenticate, (req, res) => {
   try {
     const columns = db.prepare('SELECT * FROM matrix_columns ORDER BY sort_order ASC, name ASC').all();
     const values = db.prepare('SELECT * FROM matrix_values').all();
@@ -1975,7 +1975,7 @@ app.get('/api/matrix', authenticateToken, (req, res) => {
 });
 
 // Create Matrix Column
-app.post('/api/matrix/columns', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/matrix/columns', authenticate, requireAdmin, (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Name ist erforderlich' });
@@ -1994,7 +1994,7 @@ app.post('/api/matrix/columns', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Update Matrix Column
-app.put('/api/matrix/columns/:id', authenticateToken, requireAdmin, (req, res) => {
+app.put('/api/matrix/columns/:id', authenticate, requireAdmin, (req, res) => {
   try {
     const { name, sort_order } = req.body;
     const stmt = db.prepare('UPDATE matrix_columns SET name = COALESCE(?, name), sort_order = COALESCE(?, sort_order) WHERE id = ?');
@@ -2009,7 +2009,7 @@ app.put('/api/matrix/columns/:id', authenticateToken, requireAdmin, (req, res) =
 });
 
 // Delete Matrix Column
-app.delete('/api/matrix/columns/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/matrix/columns/:id', authenticate, requireAdmin, (req, res) => {
   try {
     db.prepare('DELETE FROM matrix_columns WHERE id = ?').run(req.params.id);
     logAction(req.user.id, req.user.username, 'DELETE_MATRIX_COLUMN', { columnId: req.params.id });
@@ -2020,7 +2020,7 @@ app.delete('/api/matrix/columns/:id', authenticateToken, requireAdmin, (req, res
 });
 
 // Upsert Matrix Value (Everyone can edit)
-app.put('/api/matrix/values', authenticateToken, (req, res) => {
+app.put('/api/matrix/values', authenticate, (req, res) => {
   try {
     const { teamMemberId, columnId, level } = req.body;
     if (!teamMemberId || !columnId || level === undefined) {
@@ -2043,7 +2043,7 @@ app.put('/api/matrix/values', authenticateToken, (req, res) => {
 });
 
 // Get Trainings
-app.get('/api/trainings', authenticateToken, (req, res) => {
+app.get('/api/trainings', authenticate, (req, res) => {
   try {
     const trainings = db.prepare('SELECT * FROM trainings ORDER BY id ASC').all();
     res.json(trainings);
@@ -2053,7 +2053,7 @@ app.get('/api/trainings', authenticateToken, (req, res) => {
 });
 
 // Create Training 
-app.post('/api/trainings', authenticateToken, requireAdmin, (req, res) => {
+app.post('/api/trainings', authenticate, requireAdmin, (req, res) => {
   try {
     const result = db.prepare(`
       INSERT INTO trainings (participants, course, topic, cost, location, date1, date2, date3, days)
@@ -2068,7 +2068,7 @@ app.post('/api/trainings', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Update Training
-app.put('/api/trainings/:id', authenticateToken, requireAdmin, (req, res) => {
+app.put('/api/trainings/:id', authenticate, requireAdmin, (req, res) => {
   try {
     const { participants, course, topic, cost, location, date1, date2, date3, days } = req.body;
 
@@ -2099,7 +2099,7 @@ app.put('/api/trainings/:id', authenticateToken, requireAdmin, (req, res) => {
 });
 
 // Delete Training
-app.delete('/api/trainings/:id', authenticateToken, requireAdmin, (req, res) => {
+app.delete('/api/trainings/:id', authenticate, requireAdmin, (req, res) => {
   try {
     db.prepare('DELETE FROM trainings WHERE id = ?').run(req.params.id);
     logAction(req.user.id, req.user.username, 'DELETE_TRAINING', { trainingId: req.params.id });
