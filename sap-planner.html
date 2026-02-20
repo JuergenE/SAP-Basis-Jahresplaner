@@ -4241,7 +4241,8 @@
                             <th key={col.id} className="p-2 border-b border-gray-300 bg-gray-50 text-center min-w-[30px]" style={{ height: '180px' }}>
                               <div className="flex flex-col items-center justify-end h-full">
                                 <span
-                                  className="transform -rotate-90 whitespace-nowrap text-xs font-semibold"
+                                  className="whitespace-nowrap text-xs font-semibold"
+                                  style={{ writingMode: 'vertical-rl' }}
                                   title={canEdit ? 'Klicken zum Löschen' : ''}
                                   onClick={async () => {
                                     if (!canEdit) return;
@@ -4264,7 +4265,12 @@
                             </th>
                           ))}
                           {matrixColumns.length > 0 && (
-                            <th className="p-3 border-b border-gray-300 bg-gray-50 text-center min-w-[50px] w-12">
+                            <th className="p-2 border-b border-gray-300 bg-gray-50 text-center min-w-[50px] w-12" style={{ height: '180px' }}>
+                              <div className="flex flex-col items-center justify-end h-full pb-2">
+                                <span className="whitespace-nowrap text-xs font-semibold text-gray-700" style={{ writingMode: 'vertical-rl' }}>
+                                  Themenabdeckung Mitarbeiter
+                                </span>
+                              </div>
                             </th>
                           )}
                         </tr>
@@ -4353,12 +4359,7 @@
                                 </td>
                               );
                             })}
-                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-12" style={{ padding: '0.5rem 0' }}>
-                              <div className="flex flex-col items-center justify-end h-full">
-                                <span className="transform -rotate-180 text-gray-900 font-bold tracking-wider text-sm whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
-                                  Themenabdeckung Mitarbeiter
-                                </span>
-                              </div>
+                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-12">
                             </td>
                           </tr>
                         )}
