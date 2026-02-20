@@ -249,6 +249,8 @@ Verhindert gleichzeitiges Bearbeiten derselben Landschaft (Timeout: 5 Min).
 | POST | `/api/users` | Neuen Benutzer anlegen |
 | PUT | `/api/users/:id` | Benutzer bearbeiten |
 | DELETE | `/api/users/:id` | Benutzer löschen |
+| POST | `/api/users/ping` | Online-Status aktualisieren (Heartbeat) |
+| GET | `/api/users/online` | Liste aktiver/eingeloggter Benutzer |
 
 ### Datenimport
 

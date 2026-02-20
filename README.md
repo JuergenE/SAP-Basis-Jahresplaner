@@ -1,13 +1,13 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.1.4** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User) und bietet eine REST-API für die Verwaltung von Planungsdaten.
+Version **0.1.5** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User) und bietet eine REST-API für die Verwaltung von Planungsdaten.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
 ## Inhaltsverzeichnis
 
 - [Überblick & Architektur](#überblick--architektur)
-- [Neue Features (v0.1.4)](#neue-features-v014)
+- [Neue Features (v0.1.5)](#neue-features-v015)
 - [Installation & Start (Lokal)](#installation--start-lokal)
 - [Produktions-Deployment](#produktions-deployment)
 - [HTTPS aktivieren](#https-aktivieren)
@@ -82,7 +82,21 @@ Planung mit DB/
 
 ---
 
-## Neue Features (v0.1.4)
+## Neue Features (v0.1.5)
+
+### 👥 Online Users Anzeige
+In der rechten Bildschirmhälfte wird nun eine dynamische Leiste der aktuell im System aktiven Nutzer (anhand ihres Kürzels) eingeblendet. Die Anzeige aktualisiert sich automatisch alle 30 Sekunden per Heartbeat-Ping.
+
+### 🗑️ Globale Lösch-Bestätigung (Safeguard)
+Alle Lösch-Aktionen in der Gantt-Ansicht sowie der Teamverwaltung sind nun mit einem zentralisierten Modal-Overlay (`ConfirmDeleteDialog`) abgesichert, um unbeabsichtigten Datenverlust effektiv zu verhindern.
+
+### 🐛 UI / UX Improvements
+- Sub-Aktivitäten zeigen bei identischem Mitarbeiter-Einsatz in der übergeordneten Aktivität nun das Mitarbeiter-Kürzel anstelle von "Multi".
+- Teammitglied-Auswahldialoge in den Sub-Aktivitäten wurden in ihrer Breite vergrößert für bessere Lesbarkeit.
+
+---
+
+## Features (v0.1.4)
 
 ### 🌙 Dark Mode
 

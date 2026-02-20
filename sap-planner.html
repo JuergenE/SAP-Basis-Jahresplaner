@@ -555,6 +555,12 @@
       async createSid(landscape_id, name, is_prd, visible_in_gantt) { return this.request('/api/sids', { method: 'POST', body: JSON.stringify({ landscape_id, name, is_prd, visible_in_gantt }) }); }
       async updateSid(id, data) { return this.request(`/api/sids/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
       async deleteSid(id) { return this.request(`/api/sids/${id}`, { method: 'DELETE' }); }
+      async copySid(id, target_landscape_id, new_name) {
+        return this.request(`/api/sids/${id}/copy`, {
+          method: 'POST',
+          body: JSON.stringify({ target_landscape_id, new_name })
+        });
+      }
 
       // Activities
       async createActivity(data) { return this.request('/api/activities', { method: 'POST', body: JSON.stringify(data) }); }
@@ -577,6 +583,8 @@
       async createUser(data) { return this.request('/api/users', { method: 'POST', body: JSON.stringify(data) }); }
       async updateUser(id, data) { return this.request(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
       async deleteUser(id) { return this.request(`/api/users/${id}`, { method: 'DELETE' }); }
+      async ping() { return this.request('/api/users/ping', { method: 'POST' }); }
+      async getOnlineUsers() { return this.request('/api/users/online'); }
 
       // Import
       async importJson(data) { return this.request('/api/import/json', { method: 'POST', body: JSON.stringify(data) }); }
@@ -963,6 +971,12 @@
       </svg>
     );
 
+    const DocumentDuplicateIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    );
+
     const DownloadIcon = () => (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -1072,6 +1086,8 @@
       const [appVersion, setAppVersion] = useState(APP_VERSION_FALLBACK);
       // Multi-User Locking
       const [myLocks, setMyLocks] = useState(new Set());
+      // Online Users
+      const [onlineUsers, setOnlineUsers] = useState([]);
 
       // Check permissions
       // canEdit: Admin OR Teamlead can edit landscapes, SIDs, activities
@@ -1172,6 +1188,26 @@
 
         return () => clearInterval(interval);
       }, [myLocks]);
+
+      // Online Users tracking heartbeat
+      useEffect(() => {
+        if (!user) return; // Only if logged in
+
+        const trackOnline = async () => {
+          try {
+            await api.ping();
+            const users = await api.getOnlineUsers();
+            setOnlineUsers(users);
+          } catch (err) {
+            console.warn('Online tracking failed', err);
+          }
+        };
+
+        trackOnline(); // Initial call
+        const interval = setInterval(trackOnline, 30000); // Poll every 30 seconds
+
+        return () => clearInterval(interval);
+      }, [user]);
 
       // Check authentication on mount
       useEffect(() => {
@@ -1406,6 +1442,8 @@
       const [showMaintenanceDialog, setShowMaintenanceDialog] = useState(false);
       const [maintenanceSundays, setMaintenanceSundays] = useState([]);
       const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+      const [copySidDialog, setCopySidDialog] = useState({ isOpen: false, sourceSidId: null, sourceLandscapeId: null, targetLandscapeId: '', newName: '' });
+      const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
       // Load maintenance sundays with other data
       const loadMaintenanceSundays = async () => {
@@ -1546,14 +1584,19 @@
 
       const deleteLandscape = async (landscapeId) => {
         if (!canEdit) return;
-        if (confirm('Systemlandschaft wirklich löschen?')) {
-          try {
-            await api.deleteLandscape(landscapeId);
-            setLandscapes(landscapes.filter(l => l.id !== landscapeId));
-          } catch (error) {
-            alert('Fehler: ' + error.message);
+        setDeleteConfirm({
+          isOpen: true,
+          title: 'Systemlandschaft löschen',
+          message: 'Systemlandschaft wirklich löschen?',
+          onConfirm: async () => {
+            try {
+              await api.deleteLandscape(landscapeId);
+              setLandscapes(landscapes.filter(l => l.id !== landscapeId));
+            } catch (error) {
+              alert('Fehler: ' + error.message);
+            }
           }
-        }
+        });
       };
 
       const updateLandscape = async (landscapeId, field, value) => {
@@ -1591,16 +1634,21 @@
 
       const deleteSID = async (landscapeId, sidId) => {
         if (!canEdit) return;
-        if (confirm('SID wirklich löschen?')) {
-          try {
-            await api.deleteSid(sidId);
-            setLandscapes(landscapes.map(l =>
-              l.id === landscapeId ? { ...l, sids: l.sids.filter(s => s.id !== sidId) } : l
-            ));
-          } catch (error) {
-            alert('Fehler: ' + error.message);
+        setDeleteConfirm({
+          isOpen: true,
+          title: 'SID löschen',
+          message: 'SID wirklich löschen?',
+          onConfirm: async () => {
+            try {
+              await api.deleteSid(sidId);
+              setLandscapes(landscapes.map(l =>
+                l.id === landscapeId ? { ...l, sids: l.sids.filter(s => s.id !== sidId) } : l
+              ));
+            } catch (error) {
+              alert('Fehler: ' + error.message);
+            }
           }
-        }
+        });
       };
 
       const updateSID = async (landscapeId, sidId, field, value) => {
@@ -1635,6 +1683,17 @@
         }
       };
 
+      const handleCopySid = async () => {
+        try {
+          if (!copySidDialog.targetLandscapeId || !copySidDialog.newName) return;
+          await api.copySid(copySidDialog.sourceSidId, copySidDialog.targetLandscapeId, copySidDialog.newName);
+          setCopySidDialog({ isOpen: false, sourceSidId: null, sourceLandscapeId: null, targetLandscapeId: '', newName: '' });
+          await loadData();
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+
       const addActivity = async (landscapeId, sidId) => {
         if (!canEdit) return;
         const startDate = new Date().toISOString().split('T')[0];
@@ -1663,19 +1722,26 @@
 
       const deleteActivity = async (landscapeId, sidId, activityId) => {
         if (!canEdit) return;
-        try {
-          await api.deleteActivity(activityId);
-          setLandscapes(landscapes.map(l =>
-            l.id === landscapeId ? {
-              ...l,
-              sids: l.sids.map(s =>
-                s.id === sidId ? { ...s, activities: s.activities.filter(a => a.id !== activityId) } : s
-              )
-            } : l
-          ));
-        } catch (error) {
-          alert('Fehler: ' + error.message);
-        }
+        setDeleteConfirm({
+          isOpen: true,
+          title: 'Aktivität löschen',
+          message: 'Aktivität wirklich löschen?',
+          onConfirm: async () => {
+            try {
+              await api.deleteActivity(activityId);
+              setLandscapes(landscapes.map(l =>
+                l.id === landscapeId ? {
+                  ...l,
+                  sids: l.sids.map(s =>
+                    s.id === sidId ? { ...s, activities: s.activities.filter(a => a.id !== activityId) } : s
+                  )
+                } : l
+              ));
+            } catch (error) {
+              alert('Fehler: ' + error.message);
+            }
+          }
+        });
       };
 
       const updateActivity = async (landscapeId, sidId, activityId, field, value) => {
@@ -1839,27 +1905,34 @@
 
       const deleteSubActivity = async (landscapeId, sidId, activityId, subActivityId) => {
         if (!canEdit) return;
-        try {
-          await api.deleteSubActivity(subActivityId);
-          setLandscapes(landscapes.map(l =>
-            l.id === landscapeId ? {
-              ...l,
-              sids: l.sids.map(s =>
-                s.id === sidId ? {
-                  ...s,
-                  activities: s.activities.map(a =>
-                    a.id === activityId ? {
-                      ...a,
-                      subActivities: (a.subActivities || []).filter(sub => sub.id !== subActivityId)
-                    } : a
+        setDeleteConfirm({
+          isOpen: true,
+          title: 'Sub-Aktivität löschen',
+          message: 'Sub-Aktivität wirklich löschen?',
+          onConfirm: async () => {
+            try {
+              await api.deleteSubActivity(subActivityId);
+              setLandscapes(landscapes.map(l =>
+                l.id === landscapeId ? {
+                  ...l,
+                  sids: l.sids.map(s =>
+                    s.id === sidId ? {
+                      ...s,
+                      activities: s.activities.map(a =>
+                        a.id === activityId ? {
+                          ...a,
+                          subActivities: (a.subActivities || []).filter(sub => sub.id !== subActivityId)
+                        } : a
+                      )
+                    } : s
                   )
-                } : s
-              )
-            } : l
-          ));
-        } catch (error) {
-          alert('Fehler: ' + error.message);
-        }
+                } : l
+              ));
+            } catch (error) {
+              alert('Fehler: ' + error.message);
+            }
+          }
+        });
       };
 
       // =========================================================================
@@ -2802,6 +2875,17 @@
       // Main application
       return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6">
+          {/* Online Users Sidebar */}
+          {user && onlineUsers.length > 0 && (
+            <div className="fixed right-4 top-24 z-40 max-h-[80vh] overflow-y-auto flex flex-col gap-2">
+              {onlineUsers.map(u => (
+                <div key={u.id} className="flex items-center gap-1 justify-center px-2 py-1 bg-gray-200 rounded border border-gray-300 text-sm font-medium" title={u.username}>
+                  <span className="text-gray-600">👤</span>
+                  {u.abbreviation}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="max-w-7xl mx-auto">
             {/* Header */}
             <div className="bg-white rounded-lg shadow-lg p-4 md:p-6 mb-6">
@@ -3179,9 +3263,29 @@
                       )}
                     </div>
 
-                    {!collapsedLandscapes.has(landscape.id) && landscape.sids.map(sid => (
+                    {!collapsedLandscapes.has(landscape.id) && landscape.sids.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(sid => (
                       <div key={sid.id} className="ml-0 md:ml-4 mb-4 border-l-4 border-blue-300 pl-4">
                         <div className="flex items-center gap-3 mb-2 flex-wrap">
+                          {/* SID Sort Order Input */}
+                          <div className="relative">
+                            <input
+                              type="number"
+                              defaultValue={sid.sort_order || 0}
+                              key={`sid-sort-${sid.id}-${sid.sort_order}`}
+                              disabled={!canEdit || isLockedByOther}
+                              min="0"
+                              max="999"
+                              onBlur={(e) => {
+                                const val = e.target.value.replace(/[^0-9]/g, '');
+                                if (val !== String(sid.sort_order || 0)) {
+                                  updateSID(landscape.id, sid.id, 'sort_order', val);
+                                }
+                              }}
+                              className={`w-8 h-8 text-center font-bold text-blue-700 bg-blue-100 border border-blue-300 rounded focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 ${(!canEdit || isLockedByOther) ? 'cursor-default opacity-50' : 'cursor-text dark-mode:bg-blue-800/30'}`}
+                              title="Sortierung (je kleiner, desto weiter oben)"
+                            />
+                          </div>
+
                           <input
                             type="text"
                             value={sid.name}
@@ -3236,20 +3340,39 @@
                           >
                             {collapsedSids.has(sid.id) ? '+ Aufklappen' : '- Zuklappen'}
                           </button>
-                          <div className="flex-grow" />
-                          {canEdit && !isLockedByOther && (
-                            <button
-                              onClick={() => deleteSID(landscape.id, sid.id)}
-                              className="flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200"
-                            >
-                              <TrashIcon />
-                            </button>
-                          )}
+                          <div className="flex gap-2 ml-auto">
+                            {canEdit && !isLockedByOther && (
+                              <button
+                                onClick={() => setCopySidDialog({
+                                  isOpen: true,
+                                  sourceSidId: sid.id,
+                                  sourceLandscapeId: landscape.id,
+                                  targetLandscapeId: landscape.id, // Default to same landscape
+                                  newName: `${sid.name}_COPY`
+                                })}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                                title="SID kopieren"
+                              >
+                                <DocumentDuplicateIcon />
+                              </button>
+                            )}
+                            {canEdit && !isLockedByOther && (
+                              <button
+                                onClick={() => deleteSID(landscape.id, sid.id)}
+                                className="flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                              >
+                                <TrashIcon />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {!collapsedSids.has(sid.id) && sid.activities.map(activity => {
                           const actType = activityTypes.find(t => t.id === activity.type);
                           const hasSubActivities = activity.type === 'update' && (activity.subActivities || []).length > 0;
+                          const subActivityTeamMembers = hasSubActivities ? [...new Set((activity.subActivities || []).map(s => s.teamMemberId).filter(id => id))] : [];
+                          const isSingleUserAcrossSubs = subActivityTeamMembers.length === 1;
+                          const singleUserAbbr = isSingleUserAcrossSubs ? teamMembers.find(m => String(m.id) === String(subActivityTeamMembers[0]))?.abbreviation : null;
                           const totalSubDuration = hasSubActivities
                             ? (activity.subActivities || []).reduce((sum, sub) => sum + (parseInt(sub.duration) || 1), 0)
                             : (parseInt(activity.duration) || 1);
@@ -3319,10 +3442,10 @@
                                   </label>
                                 </div>
                                 <div className="flex items-center gap-2 ml-auto pl-2 border-l border-gray-200">
-                                  <div className="flex items-center gap-1 w-[80px] justify-center">
+                                  <div className="flex items-center gap-1 w-[110px] justify-center">
                                     <span className="text-sm text-gray-600">👤</span>
                                     {hasSubActivities ? (
-                                      <span className="text-xs font-medium">Multi</span>
+                                      <span className="text-sm font-medium px-2 py-0.5 bg-gray-200 rounded border border-gray-300">{isSingleUserAcrossSubs && singleUserAbbr ? singleUserAbbr : 'Multi'}</span>
                                     ) : (
                                       <select
                                         value={activity.teamMemberId || ''}
@@ -3375,9 +3498,23 @@
                                         className={`px-1 py-0.5 border border-gray-300 rounded w-12 text-xs ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
                                       />
                                     </div>
-                                    {canEdit && !isLockedByOther && (
-                                      <button onClick={() => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center"><TrashIcon /></button>
-                                    )}
+                                    <div className="flex items-center gap-2 ml-auto pl-2 border-l border-gray-200">
+                                      <div className="flex items-center gap-1 w-[110px] justify-center">
+                                        <span className="text-sm text-gray-600">👤</span>
+                                        <select
+                                          value={subActivity.teamMemberId || ''}
+                                          onChange={(e) => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'teamMemberId', e.target.value || null)}
+                                          disabled={!canEdit || isLockedByOther}
+                                          className="px-2 py-1 border border-gray-300 rounded text-sm w-full"
+                                        >
+                                          <option value="">-</option>
+                                          {teamMembers.map(member => <option key={member.id} value={member.id}>{member.abbreviation}</option>)}
+                                        </select>
+                                      </div>
+                                      {canEdit && !isLockedByOther && (
+                                        <button onClick={() => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center"><TrashIcon /></button>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               ))}
@@ -3576,15 +3713,20 @@
                               <td className="p-3 text-right">
                                 <button
                                   onClick={async () => {
-                                    if (confirm(`"${member.name}" wirklich löschen?`)) {
-                                      try {
-                                        await api.deleteTeamMember(member.id);
-                                        setTeamMembers(teamMembers.filter(m => m.id !== member.id));
-                                        await loadData(); // Reload to refresh activity assignments
-                                      } catch (error) {
-                                        alert(error.message);
+                                    setDeleteConfirm({
+                                      isOpen: true,
+                                      title: 'Teammitglied löschen',
+                                      message: `"${member.name}" wirklich löschen?`,
+                                      onConfirm: async () => {
+                                        try {
+                                          await api.deleteTeamMember(member.id);
+                                          setTeamMembers(teamMembers.filter(m => m.id !== member.id));
+                                          await loadData(); // Reload to refresh activity assignments
+                                        } catch (error) {
+                                          alert(error.message);
+                                        }
                                       }
-                                    }
+                                    });
                                   }}
                                   className="px-3 py-1 text-red-600 hover:bg-red-100 rounded text-sm"
                                 >
@@ -3710,6 +3852,95 @@
               </div>
             )
           }
+
+          {/* COPY SID DIALOG */}
+          {/* Global Confirm Delete Dialog */}
+          {deleteConfirm.isOpen && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm border border-gray-200">
+                <h3 className="text-lg font-bold mb-2">{deleteConfirm.title}</h3>
+                <p className="mb-6 text-sm text-gray-600">
+                  {deleteConfirm.message}
+                </p>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setDeleteConfirm({ isOpen: false, title: '', message: '', onConfirm: null })}
+                    className="px-4 py-2 border rounded hover:bg-gray-100 transition-colors text-sm"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (deleteConfirm.onConfirm) await deleteConfirm.onConfirm();
+                      setDeleteConfirm({ isOpen: false, title: '', message: '', onConfirm: null });
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm"
+                  >
+                    Löschen
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {copySidDialog.isOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+              <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md border border-gray-200">
+                <h3 className="text-xl font-bold mb-4">SID kopieren</h3>
+                <p className="mb-4 text-sm text-gray-600">
+                  Kopiert die gesamte SID inklusive aller zugehörigen Aktivitäten und Sub-Aktivitäten.
+                </p>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Ziel-Landschaft</label>
+                    <select
+                      value={copySidDialog.targetLandscapeId}
+                      onChange={e => setCopySidDialog(prev => ({ ...prev, targetLandscapeId: e.target.value }))}
+                      className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:border-blue-500 bg-white"
+                    >
+                      <option value="" disabled>-- Bitte wählen --</option>
+                      {landscapes.map(l => (
+                        <option key={l.id} value={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Name der neuen SID</label>
+                    <input
+                      type="text"
+                      value={copySidDialog.newName}
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase().replace(/[^A-Z0-9_\-]/g, '').substring(0, 8);
+                        setCopySidDialog(prev => ({ ...prev, newName: val }));
+                      }}
+                      maxLength={8}
+                      placeholder="Z.B. SID_COPY"
+                      className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:border-blue-500 bg-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    onClick={() => setCopySidDialog({ isOpen: false, sourceSidId: null, sourceLandscapeId: null, targetLandscapeId: '', newName: '' })}
+                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    onClick={handleCopySid}
+                    disabled={!copySidDialog.targetLandscapeId || !copySidDialog.newName}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="SID kopieren ausführen"
+                  >
+                    Kopieren
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Footer - visible on all tabs */}
           <div className="text-center text-gray-500 text-sm mt-6">

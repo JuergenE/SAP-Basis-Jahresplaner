@@ -32,8 +32,12 @@ const app = express();
 const PORT = process.env.PORT || 3232;
 const HOST = process.env.HOST || '0.0.0.0';
 
+// Online Users Memory Store
+// Maps user_id -> { id, username, abbreviation, lastSeen }
+const activeUsers = new Map();
+
 // Read version from package.json
-let APP_VERSION = '0.1.4';
+let APP_VERSION = '0.1.5';
 try {
   const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
   APP_VERSION = packageJson.version || '1.0.0';
@@ -570,6 +574,46 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', version: APP_VERSION });
 });
 
+// Online Users Tracking
+app.post('/api/users/ping', authenticate, (req, res) => {
+  const username = req.user.username;
+
+  let abbreviation = username.substring(0, 2).toUpperCase();
+  try {
+    // Try to locate a matching team member abbreviation
+    const member = db.prepare('SELECT abbreviation FROM team_members WHERE LOWER(name) = LOWER(?) OR LOWER(abbreviation) = LOWER(?)').get(username, username);
+    if (member && member.abbreviation) {
+      abbreviation = member.abbreviation;
+    }
+  } catch (err) {
+    // Fallback to substring if DB fails
+  }
+
+  activeUsers.set(req.user.id, {
+    id: req.user.id,
+    username: username,
+    abbreviation: abbreviation,
+    lastSeen: Date.now()
+  });
+
+  res.json({ success: true });
+});
+
+app.get('/api/users/online', authenticate, (req, res) => {
+  const now = Date.now();
+  const activeList = [];
+
+  for (const [userId, data] of activeUsers.entries()) {
+    if (now - data.lastSeen > 60000) { // 60 seconds timeout
+      activeUsers.delete(userId);
+    } else {
+      activeList.push({ id: data.id, abbreviation: data.abbreviation, username: data.username });
+    }
+  }
+
+  res.json(activeList);
+});
+
 // Get current user
 app.get('/api/auth/me', authenticate, (req, res) => {
   const user = db.prepare('SELECT dark_mode, must_change_password FROM users WHERE id = ?').get(req.user.id);
@@ -913,10 +957,35 @@ app.post('/api/sids', authenticate, requireAdmin, (req, res) => {
 
 app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
-  const { name, is_prd, visible_in_gantt, notes } = req.body;
+  const { name, is_prd, visible_in_gantt, notes, sort_order } = req.body;
 
   const updates = [];
   const values = [];
+
+  const currentSid = db.prepare('SELECT landscape_id, sort_order FROM sids WHERE id = ?').get(id);
+  if (!currentSid) {
+    return res.status(404).json({ error: 'SID nicht gefunden' });
+  }
+
+  if (sort_order !== undefined) {
+    const newSortOrder = parseInt(sort_order) || 0;
+    if (newSortOrder !== currentSid.sort_order) {
+      // Check if another SID in this landscape has this sort_order
+      const conflicting = db.prepare('SELECT id FROM sids WHERE landscape_id = ? AND sort_order = ? AND id != ?').get(currentSid.landscape_id, newSortOrder, id);
+
+      if (conflicting) {
+        // Shift conflicting SID correctly
+        const usedOrders = db.prepare('SELECT sort_order FROM sids WHERE landscape_id = ? AND id != ?').all(currentSid.landscape_id, id).map(r => r.sort_order);
+        let nextAvailable = newSortOrder + 1;
+        while (usedOrders.includes(nextAvailable)) {
+          nextAvailable++;
+        }
+        db.prepare('UPDATE sids SET sort_order = ? WHERE id = ?').run(nextAvailable, conflicting.id);
+      }
+      updates.push('sort_order = ?');
+      values.push(newSortOrder);
+    }
+  }
 
   if (name !== undefined) {
     updates.push('name = ?');
@@ -942,6 +1011,92 @@ app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
   values.push(id);
   db.prepare(`UPDATE sids SET ${updates.join(', ')} WHERE id = ?`).run(...values);
   res.json({ success: true });
+});
+
+// Deep Copy SID
+app.post('/api/sids/:id/copy', authenticate, requireAdmin, (req, res) => {
+  const { id } = req.params; // Source SID
+  const { target_landscape_id, new_name } = req.body;
+
+  if (!target_landscape_id || !new_name) {
+    return res.status(400).json({ error: 'target_landscape_id und new_name erforderlich' });
+  }
+
+  const sourceSid = db.prepare('SELECT * FROM sids WHERE id = ?').get(id);
+  if (!sourceSid) {
+    return res.status(404).json({ error: 'Quell-SID nicht gefunden' });
+  }
+
+  try {
+    const newSidId = db.transaction(() => {
+      // 1. Create new SID record
+      const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sids WHERE landscape_id = ?').get(target_landscape_id);
+      const sortOrder = (maxOrder?.max || 0) + 1;
+
+      const sidResult = db.prepare('INSERT INTO sids (landscape_id, name, is_prd, visible_in_gantt, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(
+        target_landscape_id,
+        new_name,
+        sourceSid.is_prd,
+        sourceSid.visible_in_gantt,
+        sourceSid.notes,
+        sortOrder
+      );
+      const targetSidId = sidResult.lastInsertRowid;
+
+      // 2. Fetch and duplicate all activities for this SID
+      const activities = db.prepare('SELECT * FROM activities WHERE sid_id = ?').all(id);
+
+      const insertActivity = db.prepare(`
+        INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, start_time, end_time, team_member_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const subActivities = db.prepare('SELECT * FROM sub_activities WHERE activity_id = ?');
+      const insertSubActivity = db.prepare(`
+        INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, start_time, end_time, team_member_id, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const activity of activities) {
+        const activityResult = insertActivity.run(
+          targetSidId,
+          activity.type_id,
+          activity.start_date,
+          activity.duration,
+          activity.includes_weekend,
+          activity.start_time,
+          activity.end_time,
+          activity.team_member_id
+        );
+        const newActivityId = activityResult.lastInsertRowid;
+
+        // 3. Fetch and duplicate all sub_activities for the current activity
+        const subs = subActivities.all(activity.id);
+        for (const sub of subs) {
+          insertSubActivity.run(
+            newActivityId,
+            sub.name,
+            sub.start_date,
+            sub.duration,
+            sub.includes_weekend,
+            sub.start_time,
+            sub.end_time,
+            sub.team_member_id,
+            sub.sort_order
+          );
+        }
+      }
+
+      return targetSidId;
+    })();
+
+    logAction(req.user.id, req.user.username, 'SID_COPY', { source_id: id, target_id: newSidId, target_landscape_id, new_name });
+    res.json({ success: true, id: newSidId });
+
+  } catch (error) {
+    console.error('Deep Copy SID Error:', error);
+    res.status(500).json({ error: 'Fehler beim Kopieren der SID' });
+  }
 });
 
 // Toggle SID Gantt visibility — per-user, available to ALL authenticated users
