@@ -4202,7 +4202,9 @@
             activeTab === 'skills' && (
               <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme">
                 <div className="flex justify-between items-center mb-6 border-b pb-4">
-                  <h2 className="text-2xl font-bold text-gray-800">🎓 Skills & Schulungen</h2>
+                  <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                    <span className="text-2xl">🎓</span> Skills & Schulungen
+                  </h2>
                   <div className="flex gap-2">
                     {canEdit && (
                       <button
@@ -4236,11 +4238,10 @@
                             Teammitglied
                           </th>
                           {matrixColumns.map(col => (
-                            <th key={col.id} className="p-2 border-b border-gray-300 bg-gray-50 text-center min-w-[40px]">
-                              <div className="flex flex-col items-center justify-end h-32">
+                            <th key={col.id} className="p-2 border-b border-gray-300 bg-gray-50 text-center min-w-[30px]" style={{ height: '180px' }}>
+                              <div className="flex flex-col items-center justify-end h-full">
                                 <span
-                                  className="transform -rotate-180"
-                                  style={{ writingMode: 'vertical-rl' }}
+                                  className="transform -rotate-90 whitespace-nowrap text-xs font-semibold"
                                   title={canEdit ? 'Klicken zum Löschen' : ''}
                                   onClick={async () => {
                                     if (!canEdit) return;
@@ -4255,62 +4256,112 @@
                                     }
                                   }}
                                 >
-                                  <span className={`text-sm font-medium ${canEdit ? 'cursor-pointer hover:text-red-600' : 'text-gray-700'}`}>
+                                  <span className={`inline-block ${canEdit ? 'cursor-pointer hover:text-red-600' : 'text-gray-700'}`}>
                                     {col.name}
                                   </span>
                                 </span>
                               </div>
                             </th>
                           ))}
+                          {matrixColumns.length > 0 && (
+                            <th className="p-3 border-b border-gray-300 bg-gray-50 text-center min-w-[50px] w-12">
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
-                        {teamMembers.map((member, index) => (
-                          <tr key={member.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="p-3 border-b border-gray-200 font-medium text-gray-800 sticky left-0 z-10 bg-inherit shadow-[1px_0_0_#e5e7eb]">
-                              {member.name}
+                        {teamMembers.map((member, index) => {
+                          let memberTotalScore = 0;
+                          const possibleScore = matrixColumns.length * 4;
+
+                          return (
+                            <tr key={member.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                              <td className="p-3 border-b border-gray-200 font-medium text-gray-800 sticky left-0 z-10 bg-inherit shadow-[1px_0_0_#e5e7eb]">
+                                {member.name}
+                              </td>
+                              {matrixColumns.map(col => {
+                                const val = matrixValues.find(v => v.team_member_id === member.id && v.column_id === col.id);
+                                const level = val ? val.level : 0;
+                                memberTotalScore += level;
+
+                                let bgColor = 'bg-transparent text-transparent'; // Default is invisible (0) // MODIFIED: bg-white -> bg-transparent to match mockup
+                                let borderColor = 'border-gray-500/30'; // MODIFIED: To match mockup default cell border
+                                let textColor = 'text-transparent';
+
+                                if (level === 1) { bgColor = 'bg-red-500'; borderColor = 'border-red-500'; textColor = 'text-white'; }
+                                else if (level === 2) { bgColor = 'bg-amber-400'; borderColor = 'border-amber-400'; textColor = 'text-white'; }
+                                else if (level === 3) { bgColor = 'bg-[#92d050]'; borderColor = 'border-[#92d050]'; textColor = 'text-white'; }
+                                else if (level === 4) { bgColor = 'bg-[#00b050]'; borderColor = 'border-[#00b050]'; textColor = 'text-white'; }
+
+                                return (
+                                  <td key={col.id} className="p-1 border-b border-gray-200 text-center">
+                                    <div className="flex justify-center">
+                                      <button
+                                        disabled={!canEdit}
+                                        onClick={async () => {
+                                          if (!canEdit) return;
+                                          const nextLevel = level >= 4 ? 0 : level + 1;
+                                          try {
+                                            await api.updateMatrixValue(member.id, col.id, nextLevel);
+                                            setMatrixValues(prev => {
+                                              const filtered = prev.filter(v => !(v.team_member_id === member.id && v.column_id === col.id));
+                                              return [...filtered, { team_member_id: member.id, column_id: col.id, level: nextLevel }];
+                                            });
+                                          } catch (error) {
+                                            alert(error.message);
+                                          }
+                                        }}
+                                        className={`w-6 h-6 rounded-sm border shrink-0 flex items-center justify-center font-bold text-xs transition-opacity focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-blue-400 ${bgColor} ${borderColor} ${textColor} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                                        title={level > 0 ? `Level: ${level}` : 'Kein Level'}
+                                      >
+                                        {level > 0 ? level : ''}
+                                      </button>
+                                    </div>
+                                  </td>
+                                );
+                              })}
+                              {matrixColumns.length > 0 && (
+                                <td className="p-2 border-b border-gray-200 text-center font-bold text-gray-800 text-sm">
+                                  {possibleScore > 0 ? Math.round((memberTotalScore / possibleScore) * 100) : 0}%
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                        {teamMembers.length > 0 && matrixColumns.length > 0 && (
+                          <tr className="bg-gray-100 relative">
+                            <td className="p-3 border-t-2 border-b border-gray-300 font-bold text-gray-800 sticky left-0 z-10 shadow-[1px_0_0_#d1d5db] text-center">
+                              <div className="flex flex-col items-center">
+                                <span>Themenabdeckung</span>
+                                <span>Team</span>
+                              </div>
                             </td>
                             {matrixColumns.map(col => {
-                              const val = matrixValues.find(v => v.team_member_id === member.id && v.column_id === col.id);
-                              const level = val ? val.level : 0;
+                              let colTotalScore = 0;
+                              const possibleColScore = teamMembers.length * 4;
 
-                              let bgColor = 'bg-transparent text-transparent'; // Default is invisible (0)
-
-                              if (level === 1) bgColor = 'bg-red-500 text-white';
-                              else if (level === 2) bgColor = 'bg-orange-500 text-white';
-                              else if (level === 3) bgColor = 'bg-[#92d050] text-gray-900'; // Hellgrün
-                              else if (level === 4) bgColor = 'bg-[#00b050] text-white'; // Dunkelgrün
+                              teamMembers.forEach(member => {
+                                const val = matrixValues.find(v => v.team_member_id === member.id && v.column_id === col.id);
+                                if (val) {
+                                  colTotalScore += val.level;
+                                }
+                              });
 
                               return (
-                                <td key={col.id} className="p-2 border-b border-gray-200 text-center">
-                                  <div className="flex justify-center">
-                                    <button
-                                      disabled={!canEdit}
-                                      onClick={async () => {
-                                        if (!canEdit) return;
-                                        const nextLevel = level >= 4 ? 0 : level + 1;
-                                        try {
-                                          await api.updateMatrixValue(member.id, col.id, nextLevel);
-                                          // Update local state explicitly instead of waiting for reload
-                                          setMatrixValues(prev => {
-                                            const filtered = prev.filter(v => !(v.team_member_id === member.id && v.column_id === col.id));
-                                            return [...filtered, { team_member_id: member.id, column_id: col.id, level: nextLevel }];
-                                          });
-                                        } catch (error) {
-                                          alert(error.message);
-                                        }
-                                      }}
-                                      className={`w-8 h-8 rounded shrink-0 flex items-center justify-center font-bold text-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${bgColor} ${canEdit ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-                                      title={level > 0 ? `Level: ${level}` : 'Kein Level'}
-                                    >
-                                      {level > 0 ? level : ''}
-                                    </button>
-                                  </div>
+                                <td key={`total-${col.id}`} className="p-2 border-t-2 border-b border-gray-300 text-center font-bold text-gray-800 text-sm">
+                                  {possibleColScore > 0 ? Math.round((colTotalScore / possibleColScore) * 100) : 0}%
                                 </td>
                               );
                             })}
+                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-12" style={{ padding: '0.5rem 0' }}>
+                              <div className="flex flex-col items-center justify-end h-full">
+                                <span className="transform -rotate-180 text-gray-900 font-bold tracking-wider text-sm whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+                                  Themenabdeckung Mitarbeiter
+                                </span>
+                              </div>
+                            </td>
                           </tr>
-                        ))}
+                        )}
                         {teamMembers.length === 0 && (
                           <tr>
                             <td colSpan={matrixColumns.length + 1} className="p-6 text-center text-gray-500 italic">
