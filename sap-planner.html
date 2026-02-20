@@ -3989,10 +3989,6 @@
             </div>
           )}
 
-          {/* Footer - visible on all tabs */}
-          <div className="text-center text-gray-500 text-sm mt-6">
-            SAP Basis Jahresplaner • {year} • {appVersion && `Version ${appVersion} • `}Optima Solutions GmbH • Daten werden in SQLite-Datenbank gespeichert
-          </div>
 
           {/* SID Info Edit Modal */}
           {
@@ -4462,9 +4458,8 @@
                               <input
                                 type="text"
                                 value={tr.participants || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { participants: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, participants: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, participants: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { participants: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
                                 placeholder="Peter, Hans..."
@@ -4474,9 +4469,8 @@
                               <input
                                 type="text"
                                 value={tr.course || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { course: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, course: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, course: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { course: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
                               />
@@ -4485,9 +4479,8 @@
                               <input
                                 type="text"
                                 value={tr.topic || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { topic: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, topic: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, topic: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { topic: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
                               />
@@ -4496,9 +4489,8 @@
                               <input
                                 type="text"
                                 value={tr.cost || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { cost: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, cost: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, cost: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { cost: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
                                 placeholder="€..."
@@ -4508,9 +4500,8 @@
                               <input
                                 type="text"
                                 value={tr.location || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { location: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, location: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, location: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { location: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
                               />
@@ -4519,9 +4510,8 @@
                               <input
                                 type="date"
                                 value={tr.date1 || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { date1: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date1: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date1: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { date1: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-xs"
                               />
@@ -4530,9 +4520,8 @@
                               <input
                                 type="date"
                                 value={tr.date2 || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { date2: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date2: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date2: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { date2: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-xs"
                               />
@@ -4541,9 +4530,8 @@
                               <input
                                 type="date"
                                 value={tr.date3 || ''}
-                                onChange={(e) => api.updateTraining(tr.id, { date3: e.target.value }).then(() => {
-                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date3: e.target.value } : t));
-                                })}
+                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, date3: e.target.value } : t))}
+                                onBlur={(e) => api.updateTraining(tr.id, { date3: e.target.value }).catch(err => console.error(err))}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-xs"
                               />
@@ -4552,12 +4540,14 @@
                               <input
                                 type="number"
                                 min="0"
-                                value={tr.days || ''}
+                                value={tr.days !== undefined && tr.days !== null ? tr.days : ''}
                                 onChange={(e) => {
-                                  const v = parseInt(e.target.value) || 0;
-                                  api.updateTraining(tr.id, { days: v }).then(() => {
-                                    setTrainings(trainings.map(t => t.id === tr.id ? { ...t, days: v } : t));
-                                  });
+                                  const v = e.target.value !== '' ? parseInt(e.target.value) || 0 : '';
+                                  setTrainings(trainings.map(t => t.id === tr.id ? { ...t, days: v } : t));
+                                }}
+                                onBlur={(e) => {
+                                  const v = e.target.value !== '' ? parseInt(e.target.value) || 0 : 0;
+                                  api.updateTraining(tr.id, { days: v }).catch(err => console.error(err));
                                 }}
                                 disabled={!canEdit}
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm text-center"
@@ -4600,6 +4590,11 @@
               </div>
             )
           }
+
+          {/* Footer - visible on all tabs */}
+          <div className="text-center text-gray-500 text-sm mt-8 mb-4">
+            SAP Basis Jahresplaner • {year} • {appVersion && `Version ${appVersion} • `}Optima Solutions GmbH • Daten werden in SQLite-Datenbank gespeichert
+          </div>
 
           {/* Logs Modal */}
           {
