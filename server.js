@@ -447,6 +447,10 @@ const initDatabase = () => {
     db.exec(`ALTER TABLE users ADD COLUMN last_name TEXT DEFAULT ''`);
     console.log('✓ Added last_name to users');
   } catch (e) { }
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN abbreviation TEXT DEFAULT ''`);
+    console.log('✓ Added abbreviation to users');
+  } catch (e) { }
 
   // Migration: Create user_sid_visibility table for per-user Gantt visibility
   db.exec(`
@@ -1343,10 +1347,22 @@ app.get('/api/team-members', authenticate, (req, res) => {
 
 // Create team member
 app.post('/api/team-members', authenticate, requireTeamLead, (req, res) => {
-  const { name, abbreviation, working_days, training_days, to_plan_days } = req.body;
+  let { name, user_id, abbreviation, working_days, training_days, to_plan_days } = req.body;
 
-  if (!name || !abbreviation) {
-    return res.status(400).json({ error: 'Name und Abkürzung erforderlich' });
+  if (!abbreviation) {
+    return res.status(400).json({ error: 'Abkürzung erforderlich' });
+  }
+
+  if (user_id) {
+    const user = db.prepare('SELECT username, first_name, last_name FROM users WHERE id = ?').get(user_id);
+    if (!user) {
+      return res.status(400).json({ error: 'Benutzer nicht gefunden' });
+    }
+    name = (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.username;
+    // Update abbreviation in user's data set
+    db.prepare('UPDATE users SET abbreviation = ? WHERE id = ?').run(abbreviation, user_id);
+  } else if (!name) {
+    return res.status(400).json({ error: 'Name oder Benutzer erforderlich' });
   }
 
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM team_members').get();
@@ -1432,8 +1448,8 @@ app.delete('/api/team-members/:id', authenticate, requireTeamLead, (req, res) =>
 // USER MANAGEMENT ROUTES (Admin only)
 // =========================================================================
 
-app.get('/api/users', authenticate, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, first_name, last_name, role, created_at, created_by FROM users ORDER BY created_at').all();
+app.get('/api/users', authenticate, requireTeamLead, (req, res) => {
+  const users = db.prepare('SELECT id, username, first_name, last_name, abbreviation, role, created_at, created_by FROM users ORDER BY created_at').all();
   res.json(users);
 });
 
