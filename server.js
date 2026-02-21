@@ -1463,7 +1463,7 @@ app.delete('/api/team-members/:id', authenticate, requireTeamLead, (req, res) =>
 // USER MANAGEMENT ROUTES (Admin only)
 // =========================================================================
 
-app.get('/api/users', authenticate, requireTeamLead, (req, res) => {
+app.get('/api/users', authenticate, requireAdmin, (req, res) => {
   const users = db.prepare('SELECT id, username, first_name, last_name, abbreviation, role, created_at, created_by FROM users ORDER BY created_at').all();
   res.json(users);
 });
