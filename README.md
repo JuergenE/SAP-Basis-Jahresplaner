@@ -1,13 +1,13 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.1.5** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User) und bietet eine REST-API für die Verwaltung von Planungsdaten.
+Version **0.1.6** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer) und bietet eine REST-API für die Verwaltung von Planungsdaten.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
 ## Inhaltsverzeichnis
 
 - [Überblick & Architektur](#überblick--architektur)
-- [Neue Features (v0.1.5)](#neue-features-v015)
+- [Neue Features (v0.1.6)](#neue-features-v016)
 - [Installation & Start (Lokal)](#installation--start-lokal)
 - [Produktions-Deployment](#produktions-deployment)
 - [HTTPS aktivieren](#https-aktivieren)
@@ -82,7 +82,12 @@ Planung mit DB/
 
 ---
 
-## Neue Features (v0.1.5)
+## Neue Features (v0.1.6)
+
+* **Viewer-Rolle:** Neue Nur-Lese-Rolle für den Gantt-Chart (mit Sichtbarkeits-Toggles).
+* **Skills-Export:** CSV-Export für Skills-Matrix und Schulungen.
+* **Smart CSV-Export Dropdown:** Rollenbasierter CSV Export Header-Button.
+* **Verbessertes Backup/Restore:** Backup-Funktionen für den Teamlead zentral im Header.
 
 ### 👥 Online Users Anzeige
 In der rechten Bildschirmhälfte wird nun eine dynamische Leiste der aktuell im System aktiven Nutzer (anhand ihres Kürzels) eingeblendet. Die Anzeige aktualisiert sich automatisch alle 30 Sekunden per Heartbeat-Ping.
