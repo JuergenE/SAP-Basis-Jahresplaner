@@ -4505,7 +4505,7 @@
                                   api.updateTraining(tr.id, { participants: e.target.value }).catch(err => console.error(err));
                                 }}
                                 disabled={!canEdit}
-                                className={`w-full p-2 bg-transparent outline-none text-sm appearance-none ${tr.booked_date > 0 ? 'text-white font-medium hover:!bg-[#00b050] focus:!bg-[#009040]' : 'text-gray-800 hover:bg-gray-100 focus:bg-blue-50'}`}
+                                className={`w-full p-2 outline-none text-sm appearance-none ${tr.booked_date > 0 ? '!bg-[#00b050] text-white font-medium hover:!bg-[#009040] focus:!bg-[#009040]' : 'bg-transparent text-gray-800 hover:bg-gray-100 focus:bg-blue-50'}`}
                               >
                                 <option value="" className="text-gray-800">-- Auswählen --</option>
                                 {teamMembers.map(m => (
