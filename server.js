@@ -256,7 +256,7 @@ const initDatabase = () => {
       date2 TEXT DEFAULT '',
       date3 TEXT DEFAULT '',
       days INTEGER DEFAULT 0,
-      is_booked BOOLEAN DEFAULT 0
+      booked_date INTEGER DEFAULT 0
     );
   `);
 
@@ -463,8 +463,8 @@ const initDatabase = () => {
   } catch (e) { }
 
   try {
-    db.exec(`ALTER TABLE trainings ADD COLUMN is_booked BOOLEAN DEFAULT 0`);
-    console.log('✓ Added is_booked to trainings');
+    db.exec(`ALTER TABLE trainings ADD COLUMN booked_date INTEGER DEFAULT 0`);
+    console.log('✓ Added booked_date to trainings');
   } catch (e) { }
 
   // Migration: Create user_sid_visibility table for per-user Gantt visibility
@@ -2099,12 +2099,12 @@ app.get('/api/trainings', authenticate, (req, res) => {
 app.post('/api/trainings', authenticate, requireAdmin, (req, res) => {
   try {
     const result = db.prepare(`
-      INSERT INTO trainings (participants, course, topic, cost, location, date1, date2, date3, days, is_booked)
+      INSERT INTO trainings (participants, course, topic, cost, location, date1, date2, date3, days, booked_date)
       VALUES ('', 'Neuer Kurs', '', '', '', '', '', '', 0, 0)
     `).run();
 
     logAction(req.user.id, req.user.username, 'CREATE_TRAINING', { trainingId: result.lastInsertRowid });
-    res.json({ id: result.lastInsertRowid, course: 'Neuer Kurs', participants: '', topic: '', cost: '', location: '', date1: '', date2: '', date3: '', days: 0, is_booked: 0 });
+    res.json({ id: result.lastInsertRowid, course: 'Neuer Kurs', participants: '', topic: '', cost: '', location: '', date1: '', date2: '', date3: '', days: 0, booked_date: 0 });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2113,13 +2113,13 @@ app.post('/api/trainings', authenticate, requireAdmin, (req, res) => {
 // Update Training
 app.put('/api/trainings/:id', authenticate, requireAdmin, (req, res) => {
   try {
-    const { participants, course, topic, cost, location, date1, date2, date3, days, is_booked } = req.body;
+    const { participants, course, topic, cost, location, date1, date2, date3, days, booked_date } = req.body;
 
     // Dynamically build the update query to only update provided fields
     const updates = [];
     const params = [];
 
-    const fields = { participants, course, topic, cost, location, date1, date2, date3, days, is_booked };
+    const fields = { participants, course, topic, cost, location, date1, date2, date3, days, booked_date };
 
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined) {
