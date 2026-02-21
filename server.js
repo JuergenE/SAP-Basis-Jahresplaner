@@ -1358,7 +1358,7 @@ app.post('/api/team-members', authenticate, requireTeamLead, (req, res) => {
     if (!user) {
       return res.status(400).json({ error: 'Benutzer nicht gefunden' });
     }
-    name = (user.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : user.username;
+    name = (user.first_name || user.last_name) ? `${user.first_name} ${user.last_name}`.trim() : user.username;
     // Update abbreviation in user's data set
     db.prepare('UPDATE users SET abbreviation = ? WHERE id = ?').run(abbreviation, user_id);
   } else if (!name) {
