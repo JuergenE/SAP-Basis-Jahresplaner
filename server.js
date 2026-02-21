@@ -255,7 +255,8 @@ const initDatabase = () => {
       date1 TEXT DEFAULT '',
       date2 TEXT DEFAULT '',
       date3 TEXT DEFAULT '',
-      days INTEGER DEFAULT 0
+      days INTEGER DEFAULT 0,
+      is_booked BOOLEAN DEFAULT 0
     );
   `);
 
@@ -2093,12 +2094,12 @@ app.get('/api/trainings', authenticate, (req, res) => {
 app.post('/api/trainings', authenticate, requireAdmin, (req, res) => {
   try {
     const result = db.prepare(`
-      INSERT INTO trainings (participants, course, topic, cost, location, date1, date2, date3, days)
-      VALUES ('', 'Neuer Kurs', '', '', '', '', '', '', 0)
+      INSERT INTO trainings (participants, course, topic, cost, location, date1, date2, date3, days, is_booked)
+      VALUES ('', 'Neuer Kurs', '', '', '', '', '', '', 0, 0)
     `).run();
 
     logAction(req.user.id, req.user.username, 'CREATE_TRAINING', { trainingId: result.lastInsertRowid });
-    res.json({ id: result.lastInsertRowid, course: 'Neuer Kurs', participants: '', topic: '', cost: '', location: '', date1: '', date2: '', date3: '', days: 0 });
+    res.json({ id: result.lastInsertRowid, course: 'Neuer Kurs', participants: '', topic: '', cost: '', location: '', date1: '', date2: '', date3: '', days: 0, is_booked: 0 });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2107,13 +2108,13 @@ app.post('/api/trainings', authenticate, requireAdmin, (req, res) => {
 // Update Training
 app.put('/api/trainings/:id', authenticate, requireAdmin, (req, res) => {
   try {
-    const { participants, course, topic, cost, location, date1, date2, date3, days } = req.body;
+    const { participants, course, topic, cost, location, date1, date2, date3, days, is_booked } = req.body;
 
     // Dynamically build the update query to only update provided fields
     const updates = [];
     const params = [];
 
-    const fields = { participants, course, topic, cost, location, date1, date2, date3, days };
+    const fields = { participants, course, topic, cost, location, date1, date2, date3, days, is_booked };
 
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined) {

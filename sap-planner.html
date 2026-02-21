@@ -3663,9 +3663,9 @@
                             )}
                             {canManageTeam && (
                               <td className="p-3 text-center">
-                                {/* Training days are now calculated dynamically from the Trainings Matrix */}
+                                {/* Training days are now calculated dynamically from the Trainings Matrix ONLY IF BOOKED */}
                                 <span className="font-semibold text-gray-700">
-                                  {trainings.filter(t => t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)}
+                                  {trainings.filter(t => t.is_booked && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)}
                                 </span>
                               </td>
                             )}
@@ -3677,7 +3677,7 @@
                             <td className="p-3 text-center font-bold">
                               <span>
                                 {(member.working_days || 0)
-                                  - trainings.filter(t => t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)
+                                  - trainings.filter(t => t.is_booked && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)
                                   - totalDays}
                               </span>
                             </td>
@@ -4493,16 +4493,32 @@
                       <tbody>
                         {trainings.map((tr, index) => (
                           <tr key={tr.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                            <td className="p-0 border border-gray-300">
-                              <input
-                                type="text"
-                                value={tr.participants || ''}
-                                onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, participants: e.target.value } : t))}
-                                onBlur={(e) => api.updateTraining(tr.id, { participants: e.target.value }).catch(err => console.error(err))}
-                                disabled={!canEdit}
-                                className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm"
-                                placeholder="Peter, Hans..."
-                              />
+                            <td className={`p-0 border border-gray-300 transition-colors ${tr.is_booked ? 'bg-[#00b050]' : ''}`}>
+                              <div
+                                className={`w-full h-full flex items-center ${canEdit ? 'cursor-pointer' : ''}`}
+                                onClick={async (e) => {
+                                  // Prevent toggle if they are clicking the input itself to type
+                                  if (!canEdit || e.target.tagName === 'INPUT') return;
+                                  const newStatus = tr.is_booked ? 0 : 1;
+                                  try {
+                                    await api.updateTraining(tr.id, { is_booked: newStatus });
+                                    setTrainings(trainings.map(t => t.id === tr.id ? { ...t, is_booked: newStatus } : t));
+                                  } catch (error) {
+                                    alert('Fehler beim Speichern des Status: ' + error.message);
+                                  }
+                                }}
+                                title={canEdit ? "Klicken um als 'Gepannt' (grün) zu markieren" : ""}
+                              >
+                                <input
+                                  type="text"
+                                  value={tr.participants || ''}
+                                  onChange={(e) => setTrainings(trainings.map(t => t.id === tr.id ? { ...t, participants: e.target.value } : t))}
+                                  onBlur={(e) => api.updateTraining(tr.id, { participants: e.target.value }).catch(err => console.error(err))}
+                                  disabled={!canEdit}
+                                  className={`w-full p-2 bg-transparent outline-none text-sm placeholder-gray-400 ${tr.is_booked ? 'text-white font-medium focus:bg-[#009040]' : 'text-inherit focus:bg-blue-50'}`}
+                                  placeholder="Peter, Hans..."
+                                />
+                              </div>
                             </td>
                             <td className="p-0 border border-gray-300">
                               <input
