@@ -4271,7 +4271,7 @@
                     <table className="w-full border-collapse">
                       <thead>
                         <tr className="bg-[#00b0f0] text-white">
-                          <th className="p-3 text-left w-64 border-b border-[#00b0f0] font-semibold sticky left-0 z-20 bg-[#00b0f0] shadow-[1px_0_0_#00b0f0]">
+                          <th className="p-3 text-left w-full min-w-[256px] border-b border-[#00b0f0] font-semibold sticky left-0 z-20 bg-[#00b0f0] shadow-[1px_0_0_#00b0f0]">
                             Teammitglied
                           </th>
                           {matrixColumns.map(col => (
@@ -4325,11 +4325,11 @@
                             </th>
                           ))}
                           {matrixColumns.length > 0 && (
-                            <th className="p-2 border-b border-[#00b0f0] bg-[#00b0f0] text-center min-w-[40px] w-10 sticky right-8 z-20 shadow-[-1px_0_0_#00b0f0]">
+                            <th className="p-2 border-b border-[#00b0f0] bg-[#00b0f0] text-center w-10 min-w-[40px] max-w-[40px] sticky right-[32px] z-20 shadow-[-1px_0_0_#00b0f0]">
                             </th>
                           )}
                           {matrixColumns.length > 0 && (
-                            <th className="p-0 border-b border-[#00b0f0] bg-[#00b0f0] w-8 sticky right-0 z-30">
+                            <th className="p-0 border-b border-[#00b0f0] bg-[#00b0f0] w-8 min-w-[32px] max-w-[32px] sticky right-0 z-30">
                             </th>
                           )}
                         </tr>
@@ -4342,7 +4342,7 @@
 
                           return (
                             <tr key={member.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                              <td className="p-3 border-b border-gray-200 font-medium text-gray-800 sticky left-0 z-10 bg-inherit shadow-[1px_0_0_#e5e7eb]">
+                              <td className={`p-3 border-b border-gray-200 font-medium text-gray-800 sticky left-0 z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} shadow-[1px_0_0_#e5e7eb]`}>
                                 {member.name}
                               </td>
                               {matrixColumns.map(col => {
@@ -4387,12 +4387,12 @@
                                 );
                               })}
                               {matrixColumns.length > 0 && (
-                                <td className="p-2 border-b border-gray-200 text-center font-bold text-gray-800 text-sm sticky right-8 z-10 bg-inherit shadow-[-1px_0_0_#e5e7eb]">
+                                <td className={`p-2 border-b border-gray-200 text-center font-bold text-gray-800 text-sm sticky right-[32px] z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} shadow-[-1px_0_0_#e5e7eb] w-10 min-w-[40px] max-w-[40px]`}>
                                   {possibleScore > 0 ? Math.round((memberTotalScore / possibleScore) * 100) : 0}%
                                 </td>
                               )}
                               {matrixColumns.length > 0 && index === 0 && (
-                                <td rowSpan={teamMembers.length + 1} className="p-1 border-t border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-8 align-middle sticky right-0 z-20">
+                                <td rowSpan={teamMembers.length + 1} className="p-1 border-t border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-8 min-w-[32px] max-w-[32px] align-middle sticky right-0 z-20">
                                   <div className="flex flex-col items-center justify-center h-full">
                                     <span className="transform -rotate-180 text-gray-900 font-bold tracking-wider text-sm whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
                                       Themenabdeckung Mitarbeiter
@@ -4428,7 +4428,7 @@
                                 </td>
                               );
                             })}
-                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-100 sticky right-8 z-10 shadow-[-1px_0_0_#d1d5db]"></td>
+                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-100 sticky right-[32px] z-10 shadow-[-1px_0_0_#d1d5db] w-10 min-w-[40px] max-w-[40px]"></td>
                           </tr>
                         )}
                         {teamMembers.length === 0 && (
