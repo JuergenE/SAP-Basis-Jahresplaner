@@ -483,6 +483,7 @@ const initDatabase = () => {
     if (tableDef2 && !tableDef2.sql.includes('viewer')) {
       console.log('Migrating users table to include viewer role...');
       db.pragma('foreign_keys = OFF');
+      db.pragma('legacy_alter_table = ON'); // Prevent SQLite from updating FK refs in other tables
       db.transaction(() => {
         // Get current column list
         const cols = db.pragma('table_info(users)').map(c => c.name);
@@ -506,11 +507,42 @@ const initDatabase = () => {
         db.exec(`INSERT INTO users (${colList}) SELECT ${colList} FROM users_old2`);
         db.exec("DROP TABLE users_old2");
       })();
+      db.pragma('legacy_alter_table = OFF');
       db.pragma('foreign_keys = ON');
       console.log('✓ Users table migrated to include viewer role');
     }
   } catch (e) {
     console.error('Viewer role migration failed:', e);
+    try { db.pragma('legacy_alter_table = OFF'); } catch (err) { }
+    try { db.pragma('foreign_keys = ON'); } catch (err) { }
+  }
+
+  // Repair: Fix sessions table FK if it was broken by the rename migration
+  try {
+    const sessionsDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'").get();
+    if (sessionsDef && sessionsDef.sql.includes('users_old2')) {
+      console.log('Repairing sessions table FK reference...');
+      db.pragma('foreign_keys = OFF');
+      db.transaction(() => {
+        const sessionCols = db.pragma('table_info(sessions)').map(c => c.name);
+        const sessionColList = sessionCols.join(', ');
+        db.exec("ALTER TABLE sessions RENAME TO sessions_broken");
+        db.exec(`
+          CREATE TABLE sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            token TEXT UNIQUE NOT NULL,
+            expires_at DATETIME NOT NULL
+          )
+        `);
+        db.exec(`INSERT INTO sessions (${sessionColList}) SELECT ${sessionColList} FROM sessions_broken`);
+        db.exec("DROP TABLE sessions_broken");
+      })();
+      db.pragma('foreign_keys = ON');
+      console.log('✓ Sessions table FK repaired');
+    }
+  } catch (e) {
+    console.error('Sessions repair failed:', e);
     try { db.pragma('foreign_keys = ON'); } catch (err) { }
   }
 
