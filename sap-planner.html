@@ -1123,7 +1123,7 @@
             api.getTeamMembers().catch(() => []),
             api.getMatrix().catch(() => ({ columns: [], values: [] })),
             api.getTrainings().catch(() => []),
-            (user?.role === 'admin' || user?.role === 'teamlead') ? api.getUsers().catch(() => []) : Promise.resolve([])
+            api.getUsers().catch(() => [])
           ]);
 
           if (settings.year) setYear(parseInt(settings.year));

@@ -447,6 +447,15 @@ const initDatabase = () => {
     db.exec(`ALTER TABLE users ADD COLUMN last_name TEXT DEFAULT ''`);
     console.log('✓ Added last_name to users');
   } catch (e) { }
+
+  // Migration: Populate existing empty users with meaningful names to test the dropdown UI
+  try {
+    db.exec(`UPDATE users SET first_name = 'Jürgen', last_name = 'Eifridt' WHERE username = 'juergen' AND (first_name = '' OR first_name IS NULL)`);
+    db.exec(`UPDATE users SET first_name = 'Team', last_name = 'Lead' WHERE username = 'teamlead' AND (first_name = '' OR first_name IS NULL)`);
+    db.exec(`UPDATE users SET first_name = 'Kevin', last_name = 'M' WHERE username = 'Kevin' AND (first_name = '' OR first_name IS NULL)`);
+    db.exec(`UPDATE users SET first_name = 'Karl', last_name = 'T' WHERE username = 'KarlT' AND (first_name = '' OR first_name IS NULL)`);
+    console.log('✓ Populated existing users with sample first and last names');
+  } catch (e) { console.error(e) }
   try {
     db.exec(`ALTER TABLE users ADD COLUMN abbreviation TEXT DEFAULT ''`);
     console.log('✓ Added abbreviation to users');
