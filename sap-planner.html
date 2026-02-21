@@ -3686,7 +3686,7 @@
                             {canManageTeam && <td className="p-3 text-center">{quarterDays[1]}</td>}
                             {canManageTeam && <td className="p-3 text-center">{quarterDays[2]}</td>}
                             {canManageTeam && <td className="p-3 text-center">{quarterDays[3]}</td>}
-                            <td className="p-3 text-right font-semibold">{totalDays} Tage</td>
+                            <td className="p-3 text-right font-semibold">{totalDays + trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)} Tage</td>
                             <td className="p-3 text-center font-bold">
                               <span>
                                 {(member.working_days || 0)
