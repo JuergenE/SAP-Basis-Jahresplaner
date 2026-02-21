@@ -1463,6 +1463,7 @@
       const [showMaintenanceDialog, setShowMaintenanceDialog] = useState(false);
       const [maintenanceSundays, setMaintenanceSundays] = useState([]);
       const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+      const [addSkillDialog, setAddSkillDialog] = useState({ isOpen: false, name: '' });
       const [copySidDialog, setCopySidDialog] = useState({ isOpen: false, sourceSidId: null, sourceLandscapeId: null, targetLandscapeId: '', newName: '' });
       const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
@@ -4208,17 +4209,7 @@
                   <div className="flex gap-2">
                     {canEdit && (
                       <button
-                        onClick={async () => {
-                          const name = prompt('Name des neuen Skills:');
-                          if (name?.trim()) {
-                            try {
-                              const newCol = await api.createMatrixColumn(name.trim());
-                              setMatrixColumns([...matrixColumns, newCol]);
-                            } catch (error) {
-                              alert('Fehler beim Erstellen der Spalte: ' + error.message);
-                            }
-                          }
-                        }}
+                        onClick={() => setAddSkillDialog({ isOpen: true, name: '' })}
                         className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium text-sm transition-colors"
                       >
                         + Skill hinzufügen
@@ -4233,44 +4224,64 @@
                   <div className="overflow-x-auto pb-4">
                     <table className="w-full border-collapse">
                       <thead>
-                        <tr>
-                          <th className="p-3 text-left w-64 border-b border-gray-300 bg-gray-50 text-gray-700 font-semibold sticky left-0 z-10 shadow-[1px_0_0_#d1d5db]">
+                        <tr className="bg-[#00b0f0] text-white">
+                          <th className="p-3 text-left w-64 border-b border-[#00b0f0] font-semibold sticky left-0 z-10 bg-[#00b0f0] shadow-[1px_0_0_#00b0f0]">
                             Teammitglied
                           </th>
                           {matrixColumns.map(col => (
-                            <th key={col.id} className="p-2 border-b border-gray-300 bg-gray-50 text-center min-w-[30px]" style={{ height: '180px' }}>
-                              <div className="flex flex-col items-center justify-end h-full">
-                                <span
-                                  className="whitespace-nowrap text-xs font-semibold"
-                                  style={{ writingMode: 'vertical-rl' }}
-                                  title={canEdit ? 'Klicken zum Löschen' : ''}
-                                  onClick={async () => {
-                                    if (!canEdit) return;
-                                    if (confirm(`Spalte "${col.name}" wirklich löschen?`)) {
-                                      try {
-                                        await api.deleteMatrixColumn(col.id);
-                                        setMatrixColumns(matrixColumns.filter(c => c.id !== col.id));
-                                        setMatrixValues(matrixValues.filter(v => v.column_id !== col.id));
-                                      } catch (error) {
-                                        alert(error.message);
-                                      }
-                                    }
-                                  }}
-                                >
-                                  <span className={`inline-block ${canEdit ? 'cursor-pointer hover:text-red-600' : 'text-gray-700'}`}>
-                                    {col.name}
-                                  </span>
-                                </span>
+                            <th key={col.id} className="p-2 border-b border-[#00b0f0] bg-[#00b0f0] text-center min-w-[100px]">
+                              <div className="flex items-center justify-center">
+                                {canEdit ? (
+                                  <div className="flex items-center justify-center relative group w-full">
+                                    <input
+                                      type="text"
+                                      className="bg-transparent border-b border-transparent hover:border-white focus:border-white text-center font-semibold text-white w-full px-1 outline-none placeholder-blue-200"
+                                      defaultValue={col.name}
+                                      onBlur={async (e) => {
+                                        const newName = e.target.value.trim();
+                                        if (newName && newName !== col.name) {
+                                          try {
+                                            await api.updateMatrixColumn(col.id, newName);
+                                            setMatrixColumns(matrixColumns.map(c => c.id === col.id ? { ...c, name: newName } : c));
+                                          } catch (error) {
+                                            alert(error.message);
+                                            e.target.value = col.name;
+                                          }
+                                        } else {
+                                          e.target.value = col.name;
+                                        }
+                                      }}
+                                    />
+                                    <button
+                                      onClick={async () => {
+                                        if (confirm(`Spalte "${col.name}" wirklich löschen?`)) {
+                                          try {
+                                            await api.deleteMatrixColumn(col.id);
+                                            setMatrixColumns(matrixColumns.filter(c => c.id !== col.id));
+                                            setMatrixValues(matrixValues.filter(v => v.column_id !== col.id));
+                                          } catch (error) {
+                                            alert(error.message);
+                                          }
+                                        }
+                                      }}
+                                      className="absolute right-0 text-white opacity-0 group-hover:opacity-100 p-1 hover:text-red-200"
+                                      title="Spalte löschen"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="font-semibold text-white">{col.name}</span>
+                                )}
                               </div>
                             </th>
                           ))}
                           {matrixColumns.length > 0 && (
-                            <th className="p-2 border-b border-gray-300 bg-gray-50 text-center min-w-[50px] w-12" style={{ height: '180px' }}>
-                              <div className="flex flex-col items-center justify-end h-full pb-2">
-                                <span className="whitespace-nowrap text-xs font-semibold text-gray-700" style={{ writingMode: 'vertical-rl' }}>
-                                  Themenabdeckung Mitarbeiter
-                                </span>
-                              </div>
+                            <th className="p-2 border-b border-[#00b0f0] bg-[#00b0f0] text-center min-w-[40px] w-10">
+                            </th>
+                          )}
+                          {matrixColumns.length > 0 && (
+                            <th className="p-0 border-b border-[#00b0f0] bg-[#00b0f0] w-8">
                             </th>
                           )}
                         </tr>
@@ -4331,6 +4342,15 @@
                                   {possibleScore > 0 ? Math.round((memberTotalScore / possibleScore) * 100) : 0}%
                                 </td>
                               )}
+                              {matrixColumns.length > 0 && index === 0 && (
+                                <td rowSpan={teamMembers.length + 1} className="p-1 border-t border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-8 align-middle">
+                                  <div className="flex flex-col items-center justify-center h-full">
+                                    <span className="transform -rotate-180 text-gray-900 font-bold tracking-wider text-sm whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
+                                      Themenabdeckung Mitarbeiter
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -4359,8 +4379,7 @@
                                 </td>
                               );
                             })}
-                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-12">
-                            </td>
+                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-100"></td>
                           </tr>
                         )}
                         {teamMembers.length === 0 && (
@@ -4399,16 +4418,16 @@
                     <table className="w-full border-collapse border border-[#00b0f0]">
                       <thead>
                         <tr className="bg-[#00b0f0] text-white">
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Teilnehmer</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Kurs</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Thema</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Kosten</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-left">Location</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-center">Termin1</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-center">Termin2</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-center">Termin3</th>
-                          <th className="p-2 border border-[#00b0f0] font-semibold text-center whitespace-nowrap">Anzahl Tage</th>
-                          {canEdit && <th className="p-2 border border-[#00b0f0] font-semibold text-center w-12">Aktion</th>}
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-left">Teilnehmer</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-left">Kurs</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-left">Thema</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-left">Kosten</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-left">Location</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center">Termin1</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center">Termin2</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center">Termin3</th>
+                          <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center whitespace-nowrap">Anzahl Tage</th>
+                          {canEdit && <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center w-12">Aktion</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -4652,7 +4671,54 @@
               </div>
             )
           }
-        </div >
+
+          {/* Add Skill Dialog */}
+          {
+            addSkillDialog.isOpen && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                <div className="bg-white p-6 rounded shadow-lg max-w-sm w-full">
+                  <h3 className="text-xl font-bold mb-4">Neuen Skill anlegen</h3>
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!addSkillDialog.name.trim()) return;
+                    try {
+                      const newCol = await api.createMatrixColumn(addSkillDialog.name.trim());
+                      setMatrixColumns([...matrixColumns, newCol]);
+                      setAddSkillDialog({ isOpen: false, name: '' });
+                    } catch (error) {
+                      alert('Fehler beim Erstellen der Spalte: ' + error.message);
+                    }
+                  }}>
+                    <input
+                      type="text"
+                      value={addSkillDialog.name}
+                      onChange={(e) => setAddSkillDialog({ ...addSkillDialog, name: e.target.value })}
+                      className="w-full border border-gray-300 p-2 rounded mb-4"
+                      placeholder="Name des Skills (z.B. Linux Server)"
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAddSkillDialog({ isOpen: false, name: '' })}
+                        className="px-4 py-2 bg-gray-300 text-gray-800 rounded hover:bg-gray-400"
+                      >
+                        Abbrechen
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!addSkillDialog.name.trim()}
+                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        Erstellen
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )
+          }
+        </div>
       );
     };
 
