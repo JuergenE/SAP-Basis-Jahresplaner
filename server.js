@@ -517,32 +517,33 @@ const initDatabase = () => {
     try { db.pragma('foreign_keys = ON'); } catch (err) { }
   }
 
-  // Repair: Fix sessions table FK if it was broken by the rename migration
+  // Repair: Fix ALL tables with broken FK references from the RENAME migration
   try {
-    const sessionsDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'").get();
-    if (sessionsDef && sessionsDef.sql.includes('users_old2')) {
-      console.log('Repairing sessions table FK reference...');
+    const brokenTables = db.prepare(
+      "SELECT name, sql FROM sqlite_master WHERE type='table' AND sql LIKE '%users_old2%'"
+    ).all();
+    if (brokenTables.length > 0) {
+      console.log(`Repairing ${brokenTables.length} table(s) with broken FK references...`);
       db.pragma('foreign_keys = OFF');
       db.transaction(() => {
-        const sessionCols = db.pragma('table_info(sessions)').map(c => c.name);
-        const sessionColList = sessionCols.join(', ');
-        db.exec("ALTER TABLE sessions RENAME TO sessions_broken");
-        db.exec(`
-          CREATE TABLE sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            token TEXT UNIQUE NOT NULL,
-            expires_at DATETIME NOT NULL
-          )
-        `);
-        db.exec(`INSERT INTO sessions (${sessionColList}) SELECT ${sessionColList} FROM sessions_broken`);
-        db.exec("DROP TABLE sessions_broken");
+        brokenTables.forEach(({ name, sql }) => {
+          const cols = db.pragma(`table_info(${name})`).map(c => c.name);
+          const colList = cols.join(', ');
+          const tempName = `${name}_repair_temp`;
+          db.exec(`ALTER TABLE ${name} RENAME TO ${tempName}`);
+          // Fix the schema: replace users_old2 with users
+          const fixedSql = sql.replace(/users_old2/g, 'users');
+          db.exec(fixedSql);
+          db.exec(`INSERT INTO ${name} (${colList}) SELECT ${colList} FROM ${tempName}`);
+          db.exec(`DROP TABLE ${tempName}`);
+          console.log(`  ✓ Repaired: ${name}`);
+        });
       })();
       db.pragma('foreign_keys = ON');
-      console.log('✓ Sessions table FK repaired');
+      console.log('✓ All broken FK references repaired');
     }
   } catch (e) {
-    console.error('Sessions repair failed:', e);
+    console.error('FK repair failed:', e);
     try { db.pragma('foreign_keys = ON'); } catch (err) { }
   }
 
