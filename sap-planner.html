@@ -1115,6 +1115,7 @@
       const [matrixColumns, setMatrixColumns] = useState([]);
       const [matrixValues, setMatrixValues] = useState([]);
       const [trainings, setTrainings] = useState([]);
+      const [showCsvDropdown, setShowCsvDropdown] = useState(false);
 
       // Check permissions
       // canEdit: Admin OR Teamlead can edit landscapes, SIDs, activities
@@ -2115,6 +2116,71 @@
         }
       };
 
+      const exportSkillsCSV = () => {
+        try {
+          const BOM = '\ufeff';
+          const now = new Date();
+          const timestamp = now.getFullYear().toString()
+            + String(now.getMonth() + 1).padStart(2, '0')
+            + String(now.getDate()).padStart(2, '0')
+            + '-'
+            + String(now.getHours()).padStart(2, '0')
+            + String(now.getMinutes()).padStart(2, '0')
+            + String(now.getSeconds()).padStart(2, '0');
+
+          const lines = [];
+
+          // Section 1: Skill Matrix
+          lines.push('=== Skill-Matrix ===');
+          const skillHeaders = ['Teammitglied', ...matrixColumns.map(c => c.name), 'Gesamt'];
+          lines.push(skillHeaders.join(';'));
+
+          teamMembers.forEach(member => {
+            let total = 0;
+            const ratings = matrixColumns.map(col => {
+              const val = matrixValues.find(v => v.team_member_id === member.id && v.column_id === col.id);
+              const level = val ? val.level : 0;
+              total += level;
+              return level;
+            });
+            lines.push([member.name, ...ratings, total].join(';'));
+          });
+
+          // Section 2: Schulungen
+          lines.push('');
+          lines.push('=== Schulungen ===');
+          lines.push('Teilnehmer;Kurs;Thema;Kosten;Ort;Termin 1;Termin 2;Termin 3;Tage;Gebucht');
+
+          trainings.forEach(tr => {
+            lines.push([
+              tr.participants || '',
+              tr.course || '',
+              tr.topic || '',
+              tr.cost || '',
+              tr.location || '',
+              tr.date1 || '',
+              tr.date2 || '',
+              tr.date3 || '',
+              tr.days || '',
+              tr.booked_date > 0 ? 'Ja' : 'Nein'
+            ].join(';'));
+          });
+
+          const csvContent = BOM + lines.join('\r\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `SAP-Basis-Skills-${year}-${timestamp}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 100);
+        } catch (err) {
+          alert('Fehler beim Skills CSV Export: ' + err.message);
+        }
+      };
+
       const importJSON = async (event) => {
         if (!canEdit) return;
         const file = event.target.files?.[0];
@@ -2862,22 +2928,121 @@
                   <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-200 text-sm" title="Daten vom Server aktualisieren">
                     🔄 Aktualisieren
                   </button>
-                  <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm">
-                    <DownloadIcon /> CSV Export
-                  </button>
-                  {canEdit && (
+                  {/* CSV Export Dropdown */}
+                  <div className="relative" style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setShowCsvDropdown(!showCsvDropdown)}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
+                    >
+                      <DownloadIcon /> CSV Export ▾
+                    </button>
+                    {showCsvDropdown && (
+                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-48" style={{ zIndex: 9999 }}>
+                        <button
+                          onClick={() => { exportCSV(); setShowCsvDropdown(false); }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-t-lg flex items-center gap-2"
+                        >
+                          📊 Gantt-Ansicht
+                        </button>
+                        {user?.role !== 'viewer' && (
+                          <button
+                            onClick={() => { exportSkillsCSV(); setShowCsvDropdown(false); }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 border-t border-gray-100"
+                          >
+                            🎓 Skills & Schulungen
+                          </button>
+                        )}
+                        {(user?.role === 'admin' || user?.role === 'teamlead') && (
+                          <button
+                            onClick={() => { exportTeamCSV(); setShowCsvDropdown(false); }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
+                          >
+                            👥 Team-Auslastung
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {/* Click-outside closes dropdown */}
+                  {showCsvDropdown && (
+                    <div
+                      className="fixed inset-0"
+                      style={{ zIndex: 9998 }}
+                      onClick={() => setShowCsvDropdown(false)}
+                    />
+                  )}
+                  {/* JSON Export/Import - Admin + Teamlead */}
+                  {(user?.role === 'teamlead' || user?.role === 'admin') && (
                     <>
                       <button onClick={exportJSON} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
                         <DownloadIcon /> JSON Export
                       </button>
+                      <label className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 cursor-pointer text-sm">
+                        <UploadIcon /> JSON Import
+                        <input type="file" accept=".json,application/json" onChange={importJSON} className="hidden" />
+                      </label>
                     </>
                   )}
-                  {canEdit && (
-                    <label className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 cursor-pointer text-sm">
-                      <UploadIcon /> JSON Import
-                      <input type="file" accept=".json,application/json" onChange={importJSON} className="hidden" />
-                    </label>
+                  {/* Backup Export/Import - Teamlead only */}
+                  {user?.role === 'teamlead' && (
+                    <>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const backup = await api.exportBackup();
+                            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `SAP-Planner-Backup-${new Date().toISOString().slice(0, 10)}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            setTimeout(() => URL.revokeObjectURL(url), 100);
+                          } catch (error) {
+                            alert('❌ Fehler beim Backup: ' + error.message);
+                          }
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm"
+                      >
+                        📥 Backup
+                      </button>
+                      <label className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 cursor-pointer text-sm">
+                        📤 Restore
+                        <input type="file" accept=".json,application/json" onChange={async (event) => {
+                          const file = event.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const text = await file.text();
+                            const backup = JSON.parse(text);
+                            if (!backup.version) {
+                              alert('❌ Ungültige Backup-Datei: Version fehlt');
+                              return;
+                            }
+                            const confirmed = confirm(
+                              `Backup importieren?\n\n` +
+                              `Backup-Version: ${backup.version}\n` +
+                              `Export-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n\n` +
+                              `⚠️ Alle aktuellen Daten werden überschrieben!`
+                            );
+                            if (confirmed) {
+                              const result = await api.importBackup(backup);
+                              alert(
+                                `✅ Backup erfolgreich importiert!\n\n` +
+                                `Importierte Daten:\n` +
+                                Object.entries(result.imported || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n')
+                              );
+                              window.location.reload();
+                            }
+                          } catch (error) {
+                            alert('❌ Fehler beim Import: ' + error.message);
+                          }
+                          event.target.value = '';
+                        }} className="hidden" />
+                      </label>
+                    </>
                   )}
+                  {/* Logfiles - Admin + Teamlead */}
                   {canEdit && (
                     <button onClick={openLogsDialog} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm">
                       📋 Logfiles
@@ -3523,14 +3688,7 @@
               <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto">
                 <div className="flex justify-between items-center mb-6">
                   <h2 className="text-2xl font-bold text-gray-800">👥 Team-Auslastung</h2>
-                  {canManageTeam && (
-                    <button
-                      onClick={exportTeamCSV}
-                      className="flex items-center gap-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
-                    >
-                      <DownloadIcon /> CSV Export
-                    </button>
-                  )}
+
                 </div>
 
                 {/* Team Members Section */}
@@ -3735,107 +3893,7 @@
                   </table>
                 </div>
 
-                {/* Backup/Restore Section - Teamlead and Admin */}
-                {(user?.role === 'teamlead' || user?.role === 'admin') && (
-                  <div className="mt-8 pt-6 border-t border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-700 mb-4">💾 Backup / Wiederherstellung</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Erstellen Sie ein vollständiges Backup aller Daten (Einstellungen, Aktivitätstypen, Teammitglieder, Landschaften, Aktivitäten).
-                      Das Backup enthält <strong>keine</strong> Benutzerdaten (Passwörter/Sessions).
-                    </p>
-
-                    <div className="flex flex-wrap gap-4">
-                      {/* Export Button */}
-                      <button
-                        onClick={async () => {
-                          try {
-                            const backup = await api.exportBackup();
-                            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `sap-planner-backup-${new Date().toISOString().split('T')[0]}.json`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                            alert('✅ Backup erfolgreich erstellt und heruntergeladen.');
-                          } catch (error) {
-                            alert('❌ Fehler beim Erstellen des Backups: ' + error.message);
-                          }
-                        }}
-                        className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium flex items-center gap-2"
-                      >
-                        📥 Backup exportieren
-                      </button>
-
-                      {/* Import Button */}
-                      <label className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium cursor-pointer flex items-center gap-2">
-                        📤 Backup importieren
-                        <input
-                          type="file"
-                          accept=".json"
-                          className="hidden"
-                          onChange={async (e) => {
-                            const file = e.target.files[0];
-                            if (!file) return;
-
-                            try {
-                              const text = await file.read ? await file.text() : await new Promise((resolve, reject) => {
-                                const reader = new FileReader();
-                                reader.onload = () => resolve(reader.result);
-                                reader.onerror = reject;
-                                reader.readAsText(file);
-                              });
-                              const backup = JSON.parse(text);
-
-                              if (!backup.version) {
-                                alert('❌ Ungültige Backup-Datei: Version fehlt');
-                                e.target.value = '';
-                                return;
-                              }
-
-                              const confirmed = confirm(
-                                `⚠️ ACHTUNG: Dieser Import wird alle bestehenden Daten ÜBERSCHREIBEN!\n\n` +
-                                `Backup-Version: ${backup.version}\n` +
-                                `Export-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n` +
-                                `Landschaften: ${backup.landscapes?.length || 0}\n` +
-                                `Teammitglieder: ${backup.teamMembers?.length || 0}\n` +
-                                `Aktivitätstypen: ${backup.activityTypes?.length || 0}\n\n` +
-                                `Möchten Sie fortfahren?`
-                              );
-
-                              if (!confirmed) {
-                                e.target.value = '';
-                                return;
-                              }
-
-                              const result = await api.importBackup(backup);
-                              alert(
-                                `✅ Backup erfolgreich importiert!\n\n` +
-                                `Landschaften: ${result.stats.landscapes}\n` +
-                                `SIDs: ${result.stats.sids}\n` +
-                                `Aktivitäten: ${result.stats.activities}\n` +
-                                `Sub-Aktivitäten: ${result.stats.subActivities}\n` +
-                                `Teammitglieder: ${result.stats.teamMembers}\n` +
-                                `Aktivitätstypen: ${result.stats.activityTypes}\n\n` +
-                                `Die Seite wird jetzt neu geladen.`
-                              );
-                              window.location.reload();
-                            } catch (error) {
-                              alert('❌ Fehler beim Import: ' + error.message);
-                            }
-                            e.target.value = '';
-                          }}
-                        />
-                      </label>
-                    </div>
-
-                    <p className="text-xs text-gray-500 mt-3">
-                      💡 Tipp: Erstellen Sie regelmäßig Backups, besonders vor größeren Änderungen.
-                    </p>
-                  </div>
-                )}
+                {/* Backup section moved to header */}
               </div>
             )
           }
