@@ -2841,7 +2841,7 @@
                 </div>
                 <div className="flex gap-2 flex-wrap header-controls items-center">
                   <span className="text-sm text-gray-600">
-                    {user.username} ({user.role === 'teamlead' ? 'Teamleiter' : user.role === 'admin' ? 'Administrator' : 'Benutzer'})
+                    {user.username} ({user.role === 'teamlead' ? 'Teamleiter' : user.role === 'admin' ? 'Administrator' : user.role === 'viewer' ? 'Viewer' : 'Benutzer'})
                   </span>
                   <button onClick={() => setShowPasswordDialog(true)} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded">
                     🔑 Passwort
@@ -3026,15 +3026,17 @@
                   👥 Team-Auslastung
                 </button>
               )}
-              <button
-                onClick={() => setActiveTab('skills')}
-                className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'skills'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
-                  }`}
-              >
-                🎓 Skills & Schulungen
-              </button>
+              {user?.role !== 'viewer' && (
+                <button
+                  onClick={() => setActiveTab('skills')}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'skills'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                >
+                  🎓 Skills & Schulungen
+                </button>
+              )}
             </div>
 
             {/* Legend - visible only when Gantt tab is active */}
@@ -4102,9 +4104,10 @@
                                 )}
                                 <span className={`text-xs px-2 py-0.5 rounded ${u.role === 'teamlead' ? 'bg-amber-100 text-amber-700' :
                                   u.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                    'bg-gray-100 text-gray-600'
+                                    u.role === 'viewer' ? 'bg-sky-100 text-sky-700' :
+                                      'bg-gray-100 text-gray-600'
                                   }`}>
-                                  {u.role === 'teamlead' ? 'Teamleiter' : u.role === 'admin' ? 'Administrator' : 'Benutzer'}
+                                  {u.role === 'teamlead' ? 'Teamleiter' : u.role === 'admin' ? 'Administrator' : u.role === 'viewer' ? 'Viewer' : 'Benutzer'}
                                 </span>
                               </div>
                               <div className="flex gap-2">
@@ -4211,6 +4214,7 @@
                               <option value="user">Benutzer (Lesen)</option>
                               {user.role === 'teamlead' && <option value="admin">Administrator</option>}
                               {user.role === 'teamlead' && <option value="teamlead">Teamleiter</option>}
+                              {user.role === 'teamlead' && <option value="viewer">Viewer (Nur Gantt)</option>}
                             </select>
                           </div>
                           <button

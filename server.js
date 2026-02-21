@@ -1479,8 +1479,8 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
 
   // Role-based creation restrictions
   if (req.user.role === 'teamlead') {
-    // Teamlead can create admin, user, or teamlead
-    if (!['admin', 'user', 'teamlead'].includes(targetRole)) {
+    // Teamlead can create admin, user, teamlead, or viewer
+    if (!['admin', 'user', 'teamlead', 'viewer'].includes(targetRole)) {
       return res.status(400).json({ error: 'Ungültige Rolle' });
     }
   } else if (req.user.role === 'admin') {
