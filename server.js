@@ -438,6 +438,16 @@ const initDatabase = () => {
     console.log('✓ Added must_change_password to users');
   } catch (e) { }
 
+  // Migration: Add first_name and last_name columns to users table
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN first_name TEXT DEFAULT ''`);
+    console.log('✓ Added first_name to users');
+  } catch (e) { }
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN last_name TEXT DEFAULT ''`);
+    console.log('✓ Added last_name to users');
+  } catch (e) { }
+
   // Migration: Create user_sid_visibility table for per-user Gantt visibility
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_sid_visibility (
@@ -1423,23 +1433,23 @@ app.delete('/api/team-members/:id', authenticate, requireTeamLead, (req, res) =>
 // =========================================================================
 
 app.get('/api/users', authenticate, requireAdmin, (req, res) => {
-  const users = db.prepare('SELECT id, username, role, created_at, created_by FROM users ORDER BY created_at').all();
+  const users = db.prepare('SELECT id, username, first_name, last_name, role, created_at, created_by FROM users ORDER BY created_at').all();
   res.json(users);
 });
 
 app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, first_name, last_name } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Benutzername und Passwort erforderlich' });
+  if (!username || !password || !first_name || !last_name) {
+    return res.status(400).json({ error: 'Benutzername, Passwort, Vorname und Nachname erforderlich' });
   }
 
   const targetRole = role || 'user';
 
   // Role-based creation restrictions
   if (req.user.role === 'teamlead') {
-    // Teamlead can create admin or user
-    if (!['admin', 'user'].includes(targetRole)) {
+    // Teamlead can create admin, user, or teamlead
+    if (!['admin', 'user', 'teamlead'].includes(targetRole)) {
       return res.status(400).json({ error: 'Ungültige Rolle' });
     }
   } else if (req.user.role === 'admin') {
@@ -1453,13 +1463,15 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
 
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = db.prepare('INSERT INTO users (username, password_hash, role, created_by, must_change_password) VALUES (?, ?, ?, ?, 1)').run(
+    const result = db.prepare('INSERT INTO users (username, password_hash, role, created_by, must_change_password, first_name, last_name) VALUES (?, ?, ?, ?, 1, ?, ?)').run(
       username,
       passwordHash,
       targetRole,
-      req.user.id
+      req.user.id,
+      first_name || '',
+      last_name || ''
     );
-    res.json({ id: result.lastInsertRowid, username, role: targetRole, created_by: req.user.id });
+    res.json({ id: result.lastInsertRowid, username, first_name, last_name, role: targetRole, created_by: req.user.id });
   } catch (error) {
     res.status(400).json({ error: 'Benutzername existiert bereits' });
   }
