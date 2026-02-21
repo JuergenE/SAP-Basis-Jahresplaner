@@ -462,6 +462,11 @@ const initDatabase = () => {
     console.log('✓ Added abbreviation to users');
   } catch (e) { }
 
+  try {
+    db.exec(`ALTER TABLE trainings ADD COLUMN is_booked BOOLEAN DEFAULT 0`);
+    console.log('✓ Added is_booked to trainings');
+  } catch (e) { }
+
   // Migration: Create user_sid_visibility table for per-user Gantt visibility
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_sid_visibility (
