@@ -120,7 +120,7 @@ const initDatabase = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT CHECK(role IN ('admin', 'user', 'teamlead')) NOT NULL DEFAULT 'user',
+      role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer')) NOT NULL DEFAULT 'user',
       must_change_password BOOLEAN DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -275,7 +275,7 @@ const initDatabase = () => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            role TEXT CHECK(role IN ('admin', 'user', 'teamlead')) NOT NULL DEFAULT 'user',
+            role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer')) NOT NULL DEFAULT 'user',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
           )
         `);
@@ -476,6 +476,43 @@ const initDatabase = () => {
       PRIMARY KEY (user_id, sid_id)
     )
   `);
+
+  // Migration: Update users table to allow 'viewer' role
+  try {
+    const tableDef2 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+    if (tableDef2 && !tableDef2.sql.includes('viewer')) {
+      console.log('Migrating users table to include viewer role...');
+      db.pragma('foreign_keys = OFF');
+      db.transaction(() => {
+        // Get current column list
+        const cols = db.pragma('table_info(users)').map(c => c.name);
+        const colList = cols.join(', ');
+        db.exec("ALTER TABLE users RENAME TO users_old2");
+        db.exec(`
+          CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer')) NOT NULL DEFAULT 'user',
+            must_change_password BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_by INTEGER,
+            dark_mode BOOLEAN DEFAULT 0,
+            first_name TEXT DEFAULT '',
+            last_name TEXT DEFAULT '',
+            abbreviation TEXT
+          )
+        `);
+        db.exec(`INSERT INTO users (${colList}) SELECT ${colList} FROM users_old2`);
+        db.exec("DROP TABLE users_old2");
+      })();
+      db.pragma('foreign_keys = ON');
+      console.log('✓ Users table migrated to include viewer role');
+    }
+  } catch (e) {
+    console.error('Viewer role migration failed:', e);
+    try { db.pragma('foreign_keys = ON'); } catch (err) { }
+  }
 
   console.log('✓ Database initialized');
 };
@@ -1504,7 +1541,11 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
     );
     res.json({ id: result.lastInsertRowid, username, first_name, last_name, role: targetRole, created_by: req.user.id });
   } catch (error) {
-    res.status(400).json({ error: 'Benutzername existiert bereits' });
+    if (error.message && error.message.includes('UNIQUE constraint')) {
+      res.status(400).json({ error: 'Benutzername existiert bereits' });
+    } else {
+      res.status(400).json({ error: error.message || 'Fehler beim Erstellen des Benutzers' });
+    }
   }
 });
 
