@@ -8,7 +8,7 @@ node_modules/
 .env
 checkme.md
 *.csv
-test-data-generator.js
+test-*.js
 # Debug / temp scripts
 check_*.js
 check_*.py
