@@ -163,6 +163,14 @@ const initDatabase = () => {
       sort_order INTEGER DEFAULT 0
     );
 
+    -- Bereitschaft
+    CREATE TABLE IF NOT EXISTS bereitschaft (
+      week_start TEXT PRIMARY KEY,
+      user_id INTEGER,
+      abbreviation TEXT,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
     -- SIDs
     CREATE TABLE IF NOT EXISTS sids (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -675,6 +683,9 @@ app.post('/api/auth/login', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        abbreviation: user.abbreviation,
         dark_mode: !!user.dark_mode,
         must_change_password: !!user.must_change_password,
         version: APP_VERSION
@@ -745,8 +756,16 @@ app.get('/api/users/online', authenticate, (req, res) => {
 
 // Get current user
 app.get('/api/auth/me', authenticate, (req, res) => {
-  const user = db.prepare('SELECT dark_mode, must_change_password FROM users WHERE id = ?').get(req.user.id);
-  res.json({ ...req.user, dark_mode: !!(user && user.dark_mode), must_change_password: !!(user && user.must_change_password), version: APP_VERSION });
+  const user = db.prepare('SELECT dark_mode, must_change_password, first_name, last_name, abbreviation FROM users WHERE id = ?').get(req.user.id);
+  res.json({
+    ...req.user,
+    first_name: user?.first_name,
+    last_name: user?.last_name,
+    abbreviation: user?.abbreviation,
+    dark_mode: !!(user && user.dark_mode),
+    must_change_password: !!(user && user.must_change_password),
+    version: APP_VERSION
+  });
 });
 
 // Update dark mode preference
@@ -791,6 +810,12 @@ app.post('/api/auth/change-password', authenticate, async (req, res) => {
 // =========================================================================
 // SETTINGS ROUTES
 // =========================================================================
+
+app.get('/api/debug-kraemer', (req, res) => {
+  const users = db.prepare("SELECT id, username, role, first_name, last_name, abbreviation FROM users WHERE username LIKE '%kraemer%'").all();
+  const members = db.prepare("SELECT id, name, abbreviation FROM team_members WHERE name LIKE '%kraemer%'").all();
+  res.json({ users, members });
+});
 
 app.get('/api/settings', authenticate, (req, res) => {
   const settings = db.prepare('SELECT key, value FROM settings').all();
@@ -2218,6 +2243,10 @@ app.put('/api/trainings/:id', authenticate, requireAdmin, (req, res) => {
   try {
     const { participants, course, topic, cost, location, date1, date2, date3, days, booked_date } = req.body;
 
+    if (booked_date !== undefined && req.user.role !== 'teamlead') {
+      return res.status(403).json({ error: 'Nur Teamleiter können Schulungen bestätigen' });
+    }
+
     // Dynamically build the update query to only update provided fields
     const updates = [];
     const params = [];
@@ -2245,10 +2274,72 @@ app.put('/api/trainings/:id', authenticate, requireAdmin, (req, res) => {
 });
 
 // Delete Training
-app.delete('/api/trainings/:id', authenticate, requireAdmin, (req, res) => {
+app.delete('/api/trainings/:id', authenticate, requireTeamLead, (req, res) => {
   try {
     db.prepare('DELETE FROM trainings WHERE id = ?').run(req.params.id);
     logAction(req.user.id, req.user.username, 'DELETE_TRAINING', { trainingId: req.params.id });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =========================================================================
+// API: BEREITSCHAFT
+// =========================================================================
+
+// Get Bereitschaft
+app.get('/api/bereitschaft', authenticate, (req, res) => {
+  try {
+    const data = db.prepare('SELECT week_start, user_id, abbreviation FROM bereitschaft ORDER BY week_start ASC').all();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Claim Bereitschaft Week
+app.post('/api/bereitschaft', authenticate, (req, res) => {
+  try {
+    const { week_start } = req.body;
+    if (!week_start) return res.status(400).json({ error: 'week_start is required' });
+
+    // Ensure it's not already claimed
+    const existing = db.prepare('SELECT * FROM bereitschaft WHERE week_start = ?').get(week_start);
+    if (existing) {
+      return res.status(400).json({ error: 'Diese Woche ist bereits belegt.' });
+    }
+
+    db.prepare('INSERT INTO bereitschaft (week_start, user_id, abbreviation) VALUES (?, ?, ?)').run(
+      week_start,
+      req.user.id,
+      req.user.abbreviation || req.user.username
+    );
+
+    logAction(req.user.id, req.user.username, 'CLAIM_BEREITSCHAFT', { week_start });
+    res.json({ success: true, week_start, user_id: req.user.id, abbreviation: req.user.abbreviation || req.user.username });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete Bereitschaft Claim
+app.delete('/api/bereitschaft/:week_start', authenticate, (req, res) => {
+  try {
+    const { week_start } = req.params;
+
+    const existing = db.prepare('SELECT user_id FROM bereitschaft WHERE week_start = ?').get(week_start);
+    if (!existing) {
+      return res.status(404).json({ error: 'Nicht gefunden' });
+    }
+
+    // Only teamlead can delete anyone's, normal users can only delete their own
+    if (req.user.role !== 'teamlead' && existing.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Sie dürfen nur Ihre eigenen Bereitschaften löschen.' });
+    }
+
+    db.prepare('DELETE FROM bereitschaft WHERE week_start = ?').run(week_start);
+    logAction(req.user.id, req.user.username, 'DELETE_BEREITSCHAFT', { week_start });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });

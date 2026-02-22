@@ -465,6 +465,25 @@
     .dark-mode .hover\:bg-gray-700:hover {
       background-color: #4a4d5e !important;
     }
+
+    /* CSV Export Dropdown dark mode */
+    .dark-mode .csv-dropdown-panel {
+      background-color: #383a4a !important;
+      border-color: #6272a4 !important;
+    }
+
+    .dark-mode .csv-dropdown-panel button {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode .csv-dropdown-panel button:hover {
+      background-color: rgba(80, 250, 123, 0.15) !important;
+      color: #50fa7b !important;
+    }
+
+    .dark-mode .csv-dropdown-panel .border-t {
+      border-color: #6272a4 !important;
+    }
   </style>
 </head>
 
@@ -678,6 +697,11 @@
       async createTraining() { return this.request('/api/trainings', { method: 'POST' }); }
       async updateTraining(id, data) { return this.request(`/api/trainings/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
       async deleteTraining(id) { return this.request(`/api/trainings/${id}`, { method: 'DELETE' }); }
+
+      // Bereitschaft
+      async getBereitschaft() { return this.request('/api/bereitschaft'); }
+      async claimBereitschaft(week_start) { return this.request('/api/bereitschaft', { method: 'POST', body: JSON.stringify({ week_start }) }); }
+      async deleteBereitschaft(week_start) { return this.request(`/api/bereitschaft/${week_start}`, { method: 'DELETE' }); }
     }
 
     const api = new ApiClient();
@@ -1145,6 +1169,9 @@
       const [matrixColumns, setMatrixColumns] = useState([]);
       const [matrixValues, setMatrixValues] = useState([]);
       const [trainings, setTrainings] = useState([]);
+      const [bereitschaft, setBereitschaft] = useState([]);
+      const [bView, setBView] = useState('annual');
+      const [bMonthIdx, setBMonthIdx] = useState(1);
       const [showCsvDropdown, setShowCsvDropdown] = useState(false);
 
       // Check permissions
@@ -1157,7 +1184,7 @@
       // Load data from API
       const loadData = useCallback(async () => {
         try {
-          const [settings, types, lands, sundays, members, matrix, trns, initialUsers] = await Promise.all([
+          const [settings, types, lands, sundays, members, matrix, trns, bereitschaftList, initialUsers] = await Promise.all([
             api.getSettings(),
             api.getActivityTypes(),
             api.getLandscapes(),
@@ -1165,6 +1192,7 @@
             api.getTeamMembers().catch(() => []),
             api.getMatrix().catch(() => ({ columns: [], values: [] })),
             api.getTrainings().catch(() => []),
+            api.getBereitschaft().catch(() => []),
             api.getUsers().catch(() => [])
           ]);
 
@@ -1177,6 +1205,7 @@
           setMatrixColumns(matrix.columns || []);
           setMatrixValues(matrix.values || []);
           setTrainings(trns || []);
+          setBereitschaft(bereitschaftList || []);
           if (initialUsers && initialUsers.length > 0) setUsers(initialUsers);
 
           // Calculate endDate for all activities and sub-activities on load
@@ -2966,7 +2995,7 @@
                       <DownloadIcon /> CSV Export ▾
                     </button>
                     {showCsvDropdown && (
-                      <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-48" style={{ zIndex: 9999 }}>
+                      <div className="csv-dropdown-panel absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-48" style={{ zIndex: 9999 }}>
                         <button
                           onClick={() => { exportCSV(); setShowCsvDropdown(false); }}
                           className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-t-lg flex items-center gap-2"
@@ -3229,6 +3258,17 @@
                     }`}
                 >
                   🎓 Skills & Schulungen
+                </button>
+              )}
+              {user?.role !== 'viewer' && (
+                <button
+                  onClick={() => setActiveTab('bereitschaft')}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'bereitschaft'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                    }`}
+                >
+                  Bereitschaft
                 </button>
               )}
             </div>
@@ -4470,7 +4510,32 @@
                         {teamMembers.map((member, index) => {
                           let memberTotalScore = 0;
                           const possibleScore = matrixColumns.length * 4;
-                          const memberCanEdit = user?.role === 'teamlead' || (user?.username && (user.username.toLowerCase() === member.name.toLowerCase() || user.username.toUpperCase() === member.abbreviation.toUpperCase()));
+                          const userFullName = ((user?.first_name || '') + ' ' + (user?.last_name || '')).trim().toLowerCase();
+                          const userAbbrev = (user?.abbreviation || '').toLowerCase();
+                          const userName = (user?.username || '').toLowerCase();
+                          const memberName = (member.name || '').toLowerCase();
+                          const memberAbbrev = (member.abbreviation || '').toLowerCase();
+
+                          let isMatch = userName === memberName || userName === memberAbbrev;
+                          if (userFullName) isMatch = isMatch || userFullName === memberName;
+                          if (userAbbrev) isMatch = isMatch || userAbbrev === memberAbbrev;
+
+                          // Fallback fuzzy match for old users (e.g. 'KraemerS' -> 'Sven Kraemer')
+                          if (!isMatch && userName && memberName) {
+                            if (memberName.includes(userName) || userName.includes(memberName)) {
+                              isMatch = true;
+                            } else {
+                              const parts = memberName.split(' ');
+                              for (const part of parts) {
+                                if (part.length > 3 && userName.includes(part)) {
+                                  isMatch = true;
+                                  break;
+                                }
+                              }
+                            }
+                          }
+
+                          const memberCanEdit = user?.role === 'teamlead' || (user?.role !== 'viewer' && isMatch);
 
                           return (
                             <tr key={member.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
@@ -4617,7 +4682,7 @@
                           <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center">Termin2</th>
                           <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center">Termin3</th>
                           <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center whitespace-nowrap">Anzahl Tage</th>
-                          {canEdit && <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center w-12">Aktion</th>}
+                          {user?.role === 'teamlead' && <th className="p-2 border border-[#00b0f0] bg-[#00b0f0] font-semibold text-center w-12">Aktion</th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -4682,7 +4747,7 @@
                             </td>
                             <td className={`p-1 border border-gray-300 w-36 transition-colors ${tr.booked_date === 1 ? 'booked-green' : ''}`}>
                               <div className="flex items-center space-x-1 h-full">
-                                {canEdit && tr.date1 && (
+                                {user?.role === 'teamlead' && tr.date1 && (
                                   <input
                                     type="checkbox"
                                     checked={tr.booked_date === 1}
@@ -4719,7 +4784,7 @@
                             </td>
                             <td className={`p-1 border border-gray-300 w-36 transition-colors ${tr.booked_date === 2 ? 'booked-green' : ''}`}>
                               <div className="flex items-center space-x-1 h-full">
-                                {canEdit && tr.date2 && (
+                                {user?.role === 'teamlead' && tr.date2 && (
                                   <input
                                     type="checkbox"
                                     checked={tr.booked_date === 2}
@@ -4756,7 +4821,7 @@
                             </td>
                             <td className={`p-1 border border-gray-300 w-36 transition-colors ${tr.booked_date === 3 ? 'booked-green' : ''}`}>
                               <div className="flex items-center space-x-1 h-full">
-                                {canEdit && tr.date3 && (
+                                {user?.role === 'teamlead' && tr.date3 && (
                                   <input
                                     type="checkbox"
                                     checked={tr.booked_date === 3}
@@ -4808,7 +4873,7 @@
                                 className="w-full p-2 bg-transparent outline-none focus:bg-blue-50 text-sm text-center"
                               />
                             </td>
-                            {canEdit && (
+                            {user?.role === 'teamlead' && (
                               <td className="p-2 border border-gray-300 text-center">
                                 <button
                                   onClick={async () => {
@@ -4832,7 +4897,7 @@
                         ))}
                         {trainings.length === 0 && (
                           <tr>
-                            <td colSpan={canEdit ? 10 : 9} className="p-6 text-center text-gray-500 italic border border-gray-300">
+                            <td colSpan={user?.role === 'teamlead' ? 10 : 9} className="p-6 text-center text-gray-500 italic border border-gray-300">
                               Noch keine Schulungen eingetragen.
                             </td>
                           </tr>
@@ -4841,9 +4906,307 @@
                     </table>
                   </div>
                 </div>
-
               </div>
             )
+          }
+
+          {/* Bereitschaft Tab */}
+          {
+            activeTab === 'bereitschaft' && (() => {
+              // --- Helper: get ISO Monday of the week containing a given date ---
+              const getMonday = (d) => {
+                const date = new Date(d);
+                const day = date.getDay();
+                const diff = day === 0 ? -6 : 1 - day;
+                date.setDate(date.getDate() + diff);
+                date.setHours(0, 0, 0, 0);
+                return date;
+              };
+
+              const toISO = (d) => {
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const dd = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${dd}`;
+              };
+
+              // Build a lookup: week_start -> bereitschaft entry
+              const bereitschaftMap = {};
+              bereitschaft.forEach(b => { bereitschaftMap[b.week_start] = b; });
+
+              // Build the 14 months: Dec(year-1) ... Jan(year+1)
+              const months = [];
+              for (let m = -1; m <= 12; m++) {
+                const d = new Date(year, m, 1);
+                months.push({ year: d.getFullYear(), month: d.getMonth() });
+              }
+
+              const MONTH_NAMES = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+                'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+              const DAY_LETTERS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+              // For each month, build week rows (Mon-Sun)
+              const buildMonthWeeks = (y, m) => {
+                const firstDay = new Date(y, m, 1);
+                const lastDay = new Date(y, m + 1, 0);
+                const startMonday = getMonday(firstDay);
+                const weeks = [];
+                let cur = new Date(startMonday);
+                while (cur <= lastDay) {
+                  const days = [];
+                  for (let i = 0; i < 7; i++) {
+                    days.push(new Date(cur));
+                    cur.setDate(cur.getDate() + 1);
+                  }
+                  weeks.push({ monday: new Date(days[0]), days });
+                }
+                return weeks;
+              };
+
+              const handleWeekClick = async (mondayISO) => {
+                const entry = bereitschaftMap[mondayISO];
+                if (entry) {
+                  // Already claimed — delete if own or teamlead
+                  const canDelete = user?.role === 'teamlead' || entry.user_id === user?.id;
+                  if (!canDelete) return;
+                  if (!confirm(`Bereitschaft von "${entry.abbreviation}" für diese Woche löschen?`)) return;
+                  try {
+                    await api.deleteBereitschaft(mondayISO);
+                    setBereitschaft(bereitschaft.filter(b => b.week_start !== mondayISO));
+                  } catch (e) { alert(e.message); }
+                } else {
+                  // Claim
+                  try {
+                    const result = await api.claimBereitschaft(mondayISO);
+                    setBereitschaft([...bereitschaft, { week_start: mondayISO, user_id: result.user_id, abbreviation: result.abbreviation }]);
+                  } catch (e) { alert(e.message); }
+                }
+              };
+
+              // Single month mini-calendar component
+              const MonthCalendar = ({ y, m, compact }) => {
+                const weeks = buildMonthWeeks(y, m);
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                return (
+                  <div className={`${compact ? '' : 'min-w-[320px]'} select-none`}>
+                    <div className="text-center font-bold text-base mb-2 text-[#00b0f0]">
+                      {MONTH_NAMES[m]} {y}
+                    </div>
+                    <table className="w-full border-collapse text-xs">
+                      <thead>
+                        <tr>
+                          {DAY_LETTERS.map((l, i) => (
+                            <th key={i} className={`text-center py-1 font-semibold ${i >= 5 ? 'text-red-400' : 'text-gray-500'}`}>{l}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {weeks.map((week, wi) => {
+                          const mondayISO = toISO(week.monday);
+                          const entry = bereitschaftMap[mondayISO];
+                          const isOwn = entry && entry.user_id === user?.id;
+                          const canDelete = entry && (user?.role === 'teamlead' || isOwn);
+                          const isThisWeek = (() => {
+                            const todayMonday = toISO(getMonday(today));
+                            return todayMonday === mondayISO;
+                          })();
+
+                          let rowBg = '';
+                          if (entry) {
+                            rowBg = isOwn ? 'bg-blue-100' : 'bg-green-100';
+                          } else if (isThisWeek) {
+                            rowBg = 'bg-yellow-50';
+                          }
+
+                          return (
+                            <tr
+                              key={wi}
+                              onClick={() => handleWeekClick(mondayISO)}
+                              className={`cursor-pointer transition-colors hover:brightness-95 rounded ${rowBg} ${entry && !canDelete ? 'cursor-default' : ''}`}
+                              title={entry ? `${entry.abbreviation}${canDelete ? ' – Klicken zum Löschen' : ''}` : 'Woche beanspruchen'}
+                            >
+                              {week.days.map((day, di) => {
+                                const inMonth = day.getMonth() === m;
+                                const isToday = toISO(day) === toISO(today);
+                                return (
+                                  <td key={di} className={`text-center py-1 px-0.5 rounded
+                                    ${di >= 5 ? 'text-red-400' : ''}
+                                    ${!inMonth ? 'text-gray-300' : ''}
+                                    ${isToday ? 'font-bold underline' : ''}
+                                  `}>
+                                    {di === 0 && entry ? (
+                                      <span className="inline-flex items-center justify-center w-full h-5">
+                                        <span className="text-[10px] font-bold text-blue-800 truncate">{entry.abbreviation}</span>
+                                      </span>
+                                    ) : (
+                                      <span>{inMonth ? day.getDate() : ''}</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              };
+
+
+              return (
+                <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme">
+                  {/* Header */}
+                  <div className="flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2">
+                    <h2 className="text-2xl font-bold text-gray-800">🔔 Bereitschaftskalender {year}</h2>
+                    <div className="flex items-center gap-3">
+                      {/* Legend */}
+                      <div className="flex gap-3 text-xs items-center">
+                        <span className="flex items-center gap-1">
+                          <span className="w-3 h-3 rounded bg-blue-100 inline-block border border-blue-300"></span> Eigene
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-3 h-3 rounded bg-green-100 inline-block border border-green-300"></span> Andere
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="w-3 h-3 rounded bg-yellow-50 inline-block border border-yellow-200"></span> Akt. Woche
+                        </span>
+                      </div>
+                      {/* Toggle */}
+                      <div className="flex rounded-lg overflow-hidden border border-gray-200">
+                        <button
+                          onClick={() => setBView('annual')}
+                          className={`px-3 py-1.5 text-sm font-medium transition-colors ${bView === 'annual' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Jahresansicht
+                        </button>
+                        <button
+                          onClick={() => setBView('monthly')}
+                          className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-gray-200 ${bView === 'monthly' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Monatsansicht
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Instruction */}
+                  <p className="text-xs text-gray-500 mb-4 italic">
+                    Klicke auf eine Woche, um Bereitschaft zu beanspruchen. Eigene Einträge können gelöscht werden.
+                  </p>
+
+                  {/* Annual View */}
+                  {bView === 'annual' && (
+                    <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                      {months.map(({ year: y, month: m }) => (
+                        <div key={`${y}-${m}`} className="border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow">
+                          <MonthCalendar y={y} m={m} compact={true} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Monthly View */}
+                  {bView === 'monthly' && (
+                    <div>
+                      {/* Month navigation */}
+                      <div className="flex items-center justify-between mb-4">
+                        <button
+                          onClick={() => setBMonthIdx(i => Math.max(0, i - 1))}
+                          disabled={bMonthIdx === 0}
+                          className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40 font-bold"
+                        >
+                          ‹
+                        </button>
+                        <span className="font-bold text-xl text-gray-700">
+                          {MONTH_NAMES[months[bMonthIdx].month]} {months[bMonthIdx].year}
+                        </span>
+                        <button
+                          onClick={() => setBMonthIdx(i => Math.min(months.length - 1, i + 1))}
+                          disabled={bMonthIdx === months.length - 1}
+                          className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40 font-bold"
+                        >
+                          ›
+                        </button>
+                      </div>
+
+                      {/* Month pills for quick jump */}
+                      <div className="flex flex-wrap gap-1.5 mb-6">
+                        {months.map(({ year: y, month: m }, idx) => (
+                          <button
+                            key={`${y}-${m}`}
+                            onClick={() => setBMonthIdx(idx)}
+                            className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${idx === bMonthIdx
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+                          >
+                            {MONTH_NAMES[m].slice(0, 3)} {y !== year ? y : ''}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Large Month View */}
+                      {(() => {
+                        const { year: y, month: m } = months[bMonthIdx];
+                        const weeks = buildMonthWeeks(y, m);
+                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                        return (
+                          <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                            {/* Day header */}
+                            <div className="grid grid-cols-7 bg-[#00b0f0] text-white">
+                              {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'].map((d, i) => (
+                                <div key={i} className={`text-center py-2 text-sm font-semibold ${i >= 5 ? 'opacity-70' : ''}`}>{d}</div>
+                              ))}
+                            </div>
+                            {/* Week rows */}
+                            {weeks.map((week, wi) => {
+                              const mondayISO = toISO(week.monday);
+                              const entry = bereitschaftMap[mondayISO];
+                              const isOwn = entry && entry.user_id === user?.id;
+                              const canDelete = entry && (user?.role === 'teamlead' || isOwn);
+                              const isThisWeek = toISO(getMonday(today)) === mondayISO;
+
+                              let weekBg = wi % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                              if (entry) weekBg = isOwn ? 'bg-blue-50' : 'bg-green-50';
+                              if (isThisWeek && !entry) weekBg = 'bg-yellow-50';
+
+                              return (
+                                <div
+                                  key={wi}
+                                  onClick={() => handleWeekClick(mondayISO)}
+                                  className={`grid grid-cols-7 border-t border-gray-200 cursor-pointer transition-all hover:brightness-95 ${weekBg} ${entry && !canDelete ? 'cursor-default' : ''}`}
+                                  title={entry ? `${entry.abbreviation}${canDelete ? ' – Klicken zum Löschen' : ''}` : 'Woche beanspruchen'}
+                                >
+                                  {week.days.map((day, di) => {
+                                    const inMonth = day.getMonth() === m;
+                                    const isToday = toISO(day) === toISO(today);
+                                    return (
+                                      <div key={di} className={`relative p-2 min-h-[64px] border-l border-gray-100 ${di === 0 ? 'border-l-0' : ''} ${di >= 5 ? 'opacity-60' : ''}`}>
+                                        <span className={`text-sm font-medium ${!inMonth ? 'text-gray-300' : isToday ? 'text-white bg-blue-500 rounded-full w-6 h-6 flex items-center justify-center' : 'text-gray-700'}`}>
+                                          {day.getDate()}
+                                        </span>
+                                        {di === 0 && entry && (
+                                          <div className={`mt-1 px-2 py-0.5 rounded-full text-xs font-bold inline-block ${isOwn ? 'bg-blue-200 text-blue-900' : 'bg-green-200 text-green-900'}`}>
+                                            {entry.abbreviation}
+                                          </div>
+                                        )}
+                                        {di === 0 && entry && canDelete && (
+                                          <div className="absolute top-1 right-1 text-gray-400 text-xs opacity-50 group-hover:opacity-100">✕</div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              );
+            })()
           }
 
           {/* Footer - visible on all tabs */}
