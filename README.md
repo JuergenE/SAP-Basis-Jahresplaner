@@ -85,6 +85,9 @@ Planung mit DB/
 ## Neue Features (v0.1.6)
 
 * **Viewer-Rolle:** Neue Nur-Lese-Rolle für den Gantt-Chart (mit Sichtbarkeits-Toggles).
+* **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
+* **Kürzel-Generierung:** Das Kürzel für Teammitglieder (3 Buchstaben) wird bei der Benutzeranlage automatisch aus Vor- und Nachname generiert.
+* **Persistenter Login:** Sitzungen werden nun beim Neuladen des Browsers durch `HttpOnly`-Cookies automatisch wiederhergestellt.
 * **Skills-Export:** CSV-Export für Skills-Matrix und Schulungen.
 * **Smart CSV-Export Dropdown:** Rollenbasierter CSV Export Header-Button.
 * **Verbessertes Backup/Restore:** Backup-Funktionen für den Teamlead zentral im Header.

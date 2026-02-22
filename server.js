@@ -1608,6 +1608,20 @@ app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
     updates.push('username = ?');
     values.push(username);
   }
+
+  // Security check: Admins cannot modify teamleads & original teamlead cannot be modified by other teamleads
+  if (password !== undefined || role !== undefined) {
+    const targetUser = db.prepare('SELECT username, role FROM users WHERE id = ?').get(id);
+    if (targetUser) {
+      if (targetUser.role === 'teamlead' && req.user.role !== 'teamlead') {
+        return res.status(403).json({ error: 'Admins können keine Teamleiter bearbeiten' });
+      }
+      if (targetUser.username === 'teamlead' && req.user.username !== 'teamlead') {
+        return res.status(403).json({ error: 'Der System-Teamleiter kann nicht von anderen Teamleitern bearbeitet werden' });
+      }
+    }
+  }
+
   if (password !== undefined) {
     const passwordHash = await bcrypt.hash(password, 10);
     updates.push('password_hash = ?');
@@ -1647,24 +1661,24 @@ app.delete('/api/users/:id', authenticate, requireAdmin, (req, res) => {
   }
 
   // Get target user info
-  const targetUser = db.prepare('SELECT id, role, created_by FROM users WHERE id = ?').get(targetId);
+  const targetUser = db.prepare('SELECT id, username, role, created_by FROM users WHERE id = ?').get(targetId);
   if (!targetUser) {
     return res.status(404).json({ error: 'Benutzer nicht gefunden' });
   }
 
-  // Cannot delete teamlead users
-  if (targetUser.role === 'teamlead') {
-    return res.status(403).json({ error: 'Teamleiter können nicht gelöscht werden' });
+  // The original system 'teamlead' user cannot be deleted by anyone
+  if (targetUser.username === 'teamlead') {
+    return res.status(403).json({ error: 'Der System-Teamleiter kann nicht gelöscht werden' });
   }
 
   // Role-based deletion restrictions
   if (req.user.role === 'teamlead') {
-    // Teamlead can delete admin or user
-    // (teamlead deletion already blocked above)
+    // Teamlead can delete admin, user, viewer, or other teamlead users
+    // (self-deletion and system teamlead deletion are blocked above)
   } else if (req.user.role === 'admin') {
-    // Admin can only delete users (not admins)
-    if (targetUser.role !== 'user') {
-      return res.status(403).json({ error: 'Admins können nur Benutzer löschen' });
+    // Admin can only delete users and viewers (not admins or teamleads)
+    if (targetUser.role !== 'user' && targetUser.role !== 'viewer') {
+      return res.status(403).json({ error: 'Admins können nur Benutzer und Viewer löschen' });
     }
   }
 

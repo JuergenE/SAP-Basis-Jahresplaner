@@ -4164,9 +4164,22 @@
                     <div className="border rounded-lg divide-y">
                       {users.map(u => {
                         // Determine if current user can delete this user
-                        const canDeleteThisUser = u.id !== user.id && u.role !== 'teamlead' && (
-                          user.role === 'teamlead' || (user.role === 'admin' && u.role === 'user')
+                        const canDeleteThisUser = u.id !== user.id && u.username !== 'teamlead' && (
+                          user.role === 'teamlead' || (user.role === 'admin' && (u.role === 'user' || u.role === 'viewer'))
                         );
+
+                        // Determine if current user can reset this user's password
+                        let canResetPassword = false;
+                        if (user.role === 'teamlead') {
+                          if (user.username === 'teamlead') {
+                            canResetPassword = true; // original system teamlead can reset anyone
+                          } else {
+                            canResetPassword = u.username !== 'teamlead'; // other teamleads cannot reset original teamlead
+                          }
+                        } else if (user.role === 'admin') {
+                          canResetPassword = u.role !== 'teamlead'; // admins cannot reset any teamlead
+                        }
+
                         return (
                           <div key={u.id} className="p-3 hover:bg-gray-50">
                             <div className="flex items-center justify-between">
@@ -4186,13 +4199,15 @@
                                 </span>
                               </div>
                               <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => handleResetPassword(u.id)}
-                                  className={`text-sm px-2 py-1 border rounded ${resetPasswordUserId === u.id ? 'bg-blue-600 text-white border-blue-600' : 'text-blue-600 hover:text-blue-800 border-blue-300'}`}
-                                >
-                                  🔑 PW Reset
-                                </button>
+                                {canResetPassword && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetPassword(u.id)}
+                                    className={`text-sm px-2 py-1 border rounded ${resetPasswordUserId === u.id ? 'bg-blue-600 text-white border-blue-600' : 'text-blue-600 hover:text-blue-800 border-blue-300'}`}
+                                  >
+                                    🔑 PW Reset
+                                  </button>
+                                )}
                                 {canDeleteThisUser && (
                                   <button
                                     type="button"
