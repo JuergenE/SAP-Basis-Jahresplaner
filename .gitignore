@@ -9,3 +9,6 @@ node_modules/
 checkme.md
 *.csv
 test-data-generator.js
+# Debug / temp scripts
+check_*.js
+check_*.py
