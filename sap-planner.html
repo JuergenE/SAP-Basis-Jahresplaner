@@ -1172,6 +1172,7 @@
       const [bereitschaft, setBereitschaft] = useState([]);
       const [bView, setBView] = useState('annual');
       const [bMonthIdx, setBMonthIdx] = useState(1);
+      const [bPendingDelete, setBPendingDelete] = useState(null); // mondayISO of week pending deletion
       const [showCsvDropdown, setShowCsvDropdown] = useState(false);
 
       // Check permissions
@@ -4966,16 +4967,24 @@
               const handleWeekClick = async (mondayISO) => {
                 const entry = bereitschaftMap[mondayISO];
                 if (entry) {
-                  // Already claimed — delete if own or teamlead
-                  const canDelete = user?.role === 'teamlead' || entry.user_id === user?.id;
+                  // Already claimed — only deletable by own user or teamlead
+                  const canDelete = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
                   if (!canDelete) return;
-                  if (!confirm(`Bereitschaft von "${entry.abbreviation}" für diese Woche löschen?`)) return;
-                  try {
-                    await api.deleteBereitschaft(mondayISO);
-                    setBereitschaft(bereitschaft.filter(b => b.week_start !== mondayISO));
-                  } catch (e) { alert(e.message); }
+                  // Use inline confirmation instead of confirm()
+                  if (bPendingDelete === mondayISO) {
+                    // Second click = confirmed → delete
+                    try {
+                      await api.deleteBereitschaft(mondayISO);
+                      setBereitschaft(bereitschaft.filter(b => b.week_start !== mondayISO));
+                      setBPendingDelete(null);
+                    } catch (e) { alert(e.message); }
+                  } else {
+                    // First click → arm for deletion
+                    setBPendingDelete(mondayISO);
+                  }
                 } else {
-                  // Claim
+                  // Empty week → claim it; also cancel any pending delete
+                  setBPendingDelete(null);
                   try {
                     const result = await api.claimBereitschaft(mondayISO);
                     setBereitschaft([...bereitschaft, { week_start: mondayISO, user_id: result.user_id, abbreviation: result.abbreviation }]);
@@ -5092,7 +5101,7 @@
 
                   {/* Instruction */}
                   <p className="text-xs text-gray-500 mb-4 italic">
-                    Klicke auf eine Woche, um Bereitschaft zu beanspruchen. Eigene Einträge können gelöscht werden.
+                    Klicke auf eine Woche, um Bereitschaft zu beanspruchen. Eigene Einträge können mit einem Doppelklick gelöscht werden.
                   </p>
 
                   {/* Annual View */}
@@ -5166,32 +5175,55 @@
                               const canDelete = entry && (user?.role === 'teamlead' || isOwn);
                               const isThisWeek = toISO(getMonday(today)) === mondayISO;
 
+                              // Strong, clearly visible background colours
                               let weekBg = wi % 2 === 0 ? 'bg-white' : 'bg-gray-50';
-                              if (entry) weekBg = isOwn ? 'bg-blue-50' : 'bg-green-50';
-                              if (isThisWeek && !entry) weekBg = 'bg-yellow-50';
+                              let borderAccent = '';
+                              if (entry) {
+                                weekBg = isOwn ? 'bg-blue-100' : 'bg-emerald-100';
+                                borderAccent = isOwn ? 'border-l-4 border-l-blue-500' : 'border-l-4 border-l-emerald-500';
+                              } else if (isThisWeek) {
+                                weekBg = 'bg-amber-50';
+                                borderAccent = 'border-l-4 border-l-amber-400';
+                              }
+                              // Pending delete overrides background
+                              if (bPendingDelete === mondayISO) {
+                                weekBg = 'bg-red-100';
+                                borderAccent = 'border-l-4 border-l-red-500';
+                              }
 
                               return (
                                 <div
                                   key={wi}
                                   onClick={() => handleWeekClick(mondayISO)}
-                                  className={`grid grid-cols-7 border-t border-gray-200 cursor-pointer transition-all hover:brightness-95 ${weekBg} ${entry && !canDelete ? 'cursor-default' : ''}`}
+                                  className={`grid grid-cols-7 border-t border-gray-200 cursor-pointer transition-all hover:brightness-95 ${weekBg} ${borderAccent} ${entry && !canDelete ? 'cursor-default' : ''}`}
                                   title={entry ? `${entry.abbreviation}${canDelete ? ' – Klicken zum Löschen' : ''}` : 'Woche beanspruchen'}
                                 >
                                   {week.days.map((day, di) => {
                                     const inMonth = day.getMonth() === m;
                                     const isToday = toISO(day) === toISO(today);
                                     return (
-                                      <div key={di} className={`relative p-2 min-h-[64px] border-l border-gray-100 ${di === 0 ? 'border-l-0' : ''} ${di >= 5 ? 'opacity-60' : ''}`}>
+                                      <div key={di} className={`relative p-2 min-h-[64px] ${di === 0 ? '' : 'border-l border-gray-100'} ${di >= 5 ? 'opacity-60' : ''}`}>
+                                        {/* Date number */}
                                         <span className={`text-sm font-medium ${!inMonth ? 'text-gray-300' : isToday ? 'text-white bg-blue-500 rounded-full w-6 h-6 flex items-center justify-center' : 'text-gray-700'}`}>
                                           {day.getDate()}
                                         </span>
+                                        {/* Kürzel / confirmation badge on Monday */}
                                         {di === 0 && entry && (
-                                          <div className={`mt-1 px-2 py-0.5 rounded-full text-xs font-bold inline-block ${isOwn ? 'bg-blue-200 text-blue-900' : 'bg-green-200 text-green-900'}`}>
-                                            {entry.abbreviation}
+                                          <div className="absolute left-1 bottom-2">
+                                            {bPendingDelete === mondayISO ? (
+                                              <span className="px-2 py-0.5 rounded-md text-xs font-bold tracking-wide shadow-sm whitespace-nowrap bg-red-600 text-white animate-pulse">
+                                                🗑 Löschen?
+                                              </span>
+                                            ) : (
+                                              <span className={`px-2 py-0.5 rounded-md text-xs font-bold tracking-wide shadow-sm whitespace-nowrap ${isOwn ? 'bg-blue-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                                                {entry.abbreviation}
+                                              </span>
+                                            )}
                                           </div>
                                         )}
-                                        {di === 0 && entry && canDelete && (
-                                          <div className="absolute top-1 right-1 text-gray-400 text-xs opacity-50 group-hover:opacity-100">✕</div>
+                                        {/* Delete hint on Monday */}
+                                        {di === 0 && entry && canDelete && bPendingDelete !== mondayISO && (
+                                          <div className="absolute top-1 right-1 text-gray-500 text-xs opacity-60">✕</div>
                                         )}
                                       </div>
                                     );
