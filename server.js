@@ -69,6 +69,7 @@ const apiLimiter = rateLimit({
   max: 300, // Limit each IP to 300 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
+  message: { error: 'Zu viele Anfragen. Bitte versuchen Sie es später erneut.' }
 });
 app.use('/api/', apiLimiter);
 
@@ -1434,20 +1435,24 @@ app.get('/api/team-members', authenticate, (req, res) => {
 app.post('/api/team-members', authenticate, requireTeamLead, (req, res) => {
   let { name, user_id, abbreviation, working_days, training_days, to_plan_days } = req.body;
 
-  if (!abbreviation) {
-    return res.status(400).json({ error: 'Abkürzung erforderlich' });
-  }
-
   if (user_id) {
-    const user = db.prepare('SELECT username, first_name, last_name FROM users WHERE id = ?').get(user_id);
+    const user = db.prepare('SELECT username, first_name, last_name, abbreviation FROM users WHERE id = ?').get(user_id);
     if (!user) {
       return res.status(400).json({ error: 'Benutzer nicht gefunden' });
     }
     name = (user.first_name || user.last_name) ? `${user.first_name} ${user.last_name}`.trim() : user.username;
-    // Update abbreviation in user's data set
-    db.prepare('UPDATE users SET abbreviation = ? WHERE id = ?').run(abbreviation, user_id);
+    // Use abbreviation from user record (auto-generated at user creation)
+    abbreviation = user.abbreviation || abbreviation || name.substring(0, 2).toUpperCase();
+    // Sync abbreviation back to user record if missing
+    if (!user.abbreviation && abbreviation) {
+      db.prepare('UPDATE users SET abbreviation = ? WHERE id = ?').run(abbreviation, user_id);
+    }
   } else if (!name) {
     return res.status(400).json({ error: 'Name oder Benutzer erforderlich' });
+  }
+
+  if (!abbreviation) {
+    return res.status(400).json({ error: 'Kürzel konnte nicht ermittelt werden' });
   }
 
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM team_members').get();
@@ -1562,17 +1567,27 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
     return res.status(403).json({ error: 'Keine Berechtigung' });
   }
 
+  // Auto-generate 3-letter abbreviation: first letter of Vorname + first + last letter of Nachname
+  const genAbbreviation = (fn, ln) => {
+    const f = (fn || '').trim().toUpperCase();
+    const l = (ln || '').trim().toUpperCase();
+    if (!f || !l) return '';
+    return (f[0] + l[0] + l[l.length - 1]).toUpperCase();
+  };
+  const abbreviation = genAbbreviation(first_name, last_name);
+
   try {
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = db.prepare('INSERT INTO users (username, password_hash, role, created_by, must_change_password, first_name, last_name) VALUES (?, ?, ?, ?, 1, ?, ?)').run(
+    const result = db.prepare('INSERT INTO users (username, password_hash, role, created_by, must_change_password, first_name, last_name, abbreviation) VALUES (?, ?, ?, ?, 1, ?, ?, ?)').run(
       username,
       passwordHash,
       targetRole,
       req.user.id,
       first_name || '',
-      last_name || ''
+      last_name || '',
+      abbreviation
     );
-    res.json({ id: result.lastInsertRowid, username, first_name, last_name, role: targetRole, created_by: req.user.id });
+    res.json({ id: result.lastInsertRowid, username, first_name, last_name, abbreviation, role: targetRole, created_by: req.user.id });
   } catch (error) {
     if (error.message && error.message.includes('UNIQUE constraint')) {
       res.status(400).json({ error: 'Benutzername existiert bereits' });

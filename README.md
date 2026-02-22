@@ -101,7 +101,7 @@ Alle Lösch-Aktionen in der Gantt-Ansicht sowie der Teamverwaltung sind nun mit 
 
 ---
 
-## Features (v0.1.4)
+## Features (v0.1.6)
 
 ### 🌙 Dark Mode
 

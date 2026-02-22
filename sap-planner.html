@@ -13,7 +13,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SAP Basis Jahresplaner 0.1.4</title>
+  <title>SAP Basis Jahresplaner 0.1.6</title>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -298,6 +298,36 @@
       background-color: #00b050 !important;
       color: #ffffff !important;
       border-color: #00b050 !important;
+    }
+
+    /* Dark mode: Role badge overrides for Benutzerverwaltung */
+    .dark-mode .bg-amber-100 {
+      background-color: #805b10 !important;
+    }
+
+    .dark-mode .text-amber-700 {
+      color: #fde68a !important;
+    }
+
+    .dark-mode .bg-purple-100 {
+      background-color: #5b21b6 !important;
+    }
+
+    .dark-mode .text-purple-700 {
+      color: #e9d5ff !important;
+    }
+
+    .dark-mode .bg-sky-100 {
+      background-color: #0c4a6e !important;
+    }
+
+    .dark-mode .text-sky-700 {
+      color: #bae6fd !important;
+    }
+
+    .dark-mode .bg-gray-100.text-gray-600 {
+      background-color: #4a4d5e !important;
+      color: #d1d5db !important;
     }
 
     .dark-mode input::placeholder,
@@ -652,7 +682,7 @@
 
     const api = new ApiClient();
 
-    const APP_VERSION_FALLBACK = '0.1.4';
+    const APP_VERSION_FALLBACK = '0.1.6';
 
     const bundeslaender = [
       { id: 'BW', name: 'Baden-Württemberg' },
@@ -1247,22 +1277,21 @@
       // Check authentication on mount
       useEffect(() => {
         const checkAuth = async () => {
-          if (api.token) {
-            try {
-              const userData = await api.getMe();
-              setUser(userData);
-              if (userData.version) setAppVersion(userData.version);
-              // Apply user's dark mode preference from server
-              applyDarkMode(!!userData.dark_mode);
-              // Check if user must change password
-              if (userData.must_change_password) {
-                setMustChangePassword(true);
-              } else {
-                await loadData();
-              }
-            } catch {
-              api.setToken(null);
+          try {
+            const userData = await api.getMe();
+            setUser(userData);
+            if (userData.version) setAppVersion(userData.version);
+            // Apply user's dark mode preference from server
+            applyDarkMode(!!userData.dark_mode);
+            // Check if user must change password
+            if (userData.must_change_password) {
+              setMustChangePassword(true);
+            } else {
+              await loadData();
             }
+          } catch {
+            // Not logged in or session expired
+            api.setToken(null);
           }
           setLoading(false);
         };
@@ -2059,7 +2088,7 @@
             + String(now.getMinutes()).padStart(2, '0')
             + String(now.getSeconds()).padStart(2, '0');
 
-          const lines = ['Teammitglied;Abkürzung;Arbeitstage;Schulungen;Verplant Q1;Verplant Q2;Verplant Q3;Verplant Q4;Verplante Tage;Verfügbare Tage'];
+          const lines = ['Teammitglied;Kürzel;Arbeitstage;Schulungen;Verplant Q1;Verplant Q2;Verplant Q3;Verplant Q4;Verplante Tage;Verfügbare Tage'];
 
           teamMembers.forEach(member => {
             let totalDays = 0;
@@ -3703,10 +3732,9 @@
                         e.preventDefault();
                         const form = e.target;
                         const userId = form.userId.value;
-                        const abbreviation = form.abbreviation.value.trim().toUpperCase();
-                        if (userId && abbreviation) {
+                        if (userId) {
                           try {
-                            const newMember = await api.createTeamMember({ user_id: userId, abbreviation });
+                            const newMember = await api.createTeamMember({ user_id: userId });
                             setTeamMembers([...teamMembers, newMember]);
                             form.reset();
                           } catch (error) {
@@ -3724,24 +3752,13 @@
                           className="px-4 py-2 border border-gray-300 rounded-lg w-64 bg-white"
                         >
                           <option value="">- Bitte wählen -</option>
-                          {users && users.map(u => {
+                          {users && users.filter(u => u.role !== 'viewer').map(u => {
                             const displayName = (u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username;
                             return (
                               <option key={u.id} value={u.id}>{displayName}</option>
                             );
                           })}
                         </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Abkürzung</label>
-                        <input
-                          type="text"
-                          name="abbreviation"
-                          required
-                          placeholder="MM"
-                          maxLength="4"
-                          className="px-4 py-2 border border-gray-300 rounded-lg w-24 uppercase"
-                        />
                       </div>
                       <button
                         type="submit"
@@ -3757,7 +3774,7 @@
                     <thead>
                       <tr className="bg-gray-100">
                         <th className="text-left p-3 font-semibold">Teammitglied</th>
-                        <th className="text-left p-3 font-semibold">Abkürzung</th>
+                        <th className="text-left p-3 font-semibold">Kürzel</th>
                         {canManageTeam && <th className="text-center p-3 font-semibold">Arbeitstage</th>}
                         {canManageTeam && <th className="text-center p-3 font-semibold">Schulungen</th>}
                         {canManageTeam && <th className="text-center p-3 font-semibold">Verplant Q1</th>}
@@ -4275,12 +4292,16 @@
                               {user.role === 'teamlead' && <option value="viewer">Viewer (Nur Gantt)</option>}
                             </select>
                           </div>
-                          <button
-                            type="submit"
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-                          >
-                            + Anlegen
-                          </button>
+                          <div className="w-20">
+                            <label className="block text-xs text-gray-600 mb-1">Kürzel</label>
+                            <input
+                              type="text"
+                              name="newAbbreviation"
+                              readOnly
+                              tabIndex={-1}
+                              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 font-mono font-bold text-center uppercase"
+                            />
+                          </div>
                         </div>
                         <div className="flex flex-wrap gap-2 items-end">
                           <div className="flex-1 min-w-32">
@@ -4291,6 +4312,12 @@
                               required
                               placeholder="Vorname"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              onInput={(e) => {
+                                const form = e.target.form;
+                                const fn = (form.newFirstName.value || '').trim().toUpperCase();
+                                const ln = (form.newLastName.value || '').trim().toUpperCase();
+                                form.newAbbreviation.value = (fn && ln) ? (fn[0] + ln[0] + ln[ln.length - 1]) : '';
+                              }}
                             />
                           </div>
                           <div className="flex-1 min-w-32">
@@ -4301,21 +4328,32 @@
                               required
                               placeholder="Nachname"
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              onInput={(e) => {
+                                const form = e.target.form;
+                                const fn = (form.newFirstName.value || '').trim().toUpperCase();
+                                const ln = (form.newLastName.value || '').trim().toUpperCase();
+                                form.newAbbreviation.value = (fn && ln) ? (fn[0] + ln[0] + ln[ln.length - 1]) : '';
+                              }}
                             />
                           </div>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                          >
+                            + Anlegen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowUserDialog(false)}
+                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+                          >
+                            Schließen
+                          </button>
                         </div>
                       </form>
                     </div>
                   )}
 
-                  <div className="mt-6 text-right">
-                    <button
-                      onClick={() => setShowUserDialog(false)}
-                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                    >
-                      Schließen
-                    </button>
-                  </div>
                 </div>
               </div>
             )

@@ -8,7 +8,7 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-// v0.1.4
+// v0.1.6
 /**
  * Benutzer-Verwaltung für SAP Basis Jahresplaner
  * 
