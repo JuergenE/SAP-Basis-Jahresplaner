@@ -2,6 +2,7 @@
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
 *.log
 *.back
 node_modules/
@@ -10,6 +11,10 @@ checkme.md
 *.csv
 test-*.js
 # Debug / temp scripts
+check.js
 check_*.js
 check_*.py
+manage-users.js
+# Data directory
+data/
 .agents/
