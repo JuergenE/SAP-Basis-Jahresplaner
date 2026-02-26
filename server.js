@@ -66,7 +66,7 @@ app.use(helmet({
 // Rate Limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per windowMs
+  max: 400, // Limit each IP to 400 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zu viele Anfragen. Bitte versuchen Sie es später erneut.' }
@@ -471,6 +471,23 @@ const initDatabase = () => {
     console.log('✓ Added abbreviation to users');
   } catch (e) { }
 
+  // Fix existing users with empty or too-short abbreviations
+  try {
+    const usersToFix = db.prepare("SELECT id, username, first_name, last_name, abbreviation FROM users WHERE (abbreviation IS NULL OR abbreviation = '' OR LENGTH(abbreviation) < 3) AND first_name IS NOT NULL AND first_name != '' AND last_name IS NOT NULL AND last_name != ''").all();
+    for (const u of usersToFix) {
+      const fn = u.first_name.trim().toUpperCase();
+      const ln = u.last_name.trim().toUpperCase();
+      if (fn && ln) {
+        const newAbbr = fn[0] + ln[0] + ln[ln.length - 1];
+        db.prepare('UPDATE users SET abbreviation = ? WHERE id = ?').run(newAbbr, u.id);
+        // Also sync to team_members
+        const memberName = `${u.first_name} ${u.last_name}`.trim();
+        db.prepare('UPDATE team_members SET abbreviation = ? WHERE LOWER(name) = LOWER(?)').run(newAbbr, memberName);
+        console.log(`✓ Fixed abbreviation for ${u.username}: '${u.abbreviation || ''}' → '${newAbbr}'`);
+      }
+    }
+  } catch (e) { console.error('Abbreviation fix error:', e); }
+
   try {
     db.exec(`ALTER TABLE trainings ADD COLUMN booked_date INTEGER DEFAULT 0`);
     console.log('✓ Added booked_date to trainings');
@@ -811,11 +828,7 @@ app.post('/api/auth/change-password', authenticate, async (req, res) => {
 // SETTINGS ROUTES
 // =========================================================================
 
-app.get('/api/debug-kraemer', (req, res) => {
-  const users = db.prepare("SELECT id, username, role, first_name, last_name, abbreviation FROM users WHERE username LIKE '%kraemer%'").all();
-  const members = db.prepare("SELECT id, name, abbreviation FROM team_members WHERE name LIKE '%kraemer%'").all();
-  res.json({ users, members });
-});
+// Debug endpoint removed (security: was unauthenticated)
 
 app.get('/api/settings', authenticate, (req, res) => {
   const settings = db.prepare('SELECT key, value FROM settings').all();
@@ -1115,6 +1128,7 @@ app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
 
   const updates = [];
   const values = [];
+  let sortOrderHandled = false;
 
   const currentSid = db.prepare('SELECT landscape_id, sort_order FROM sids WHERE id = ?').get(id);
   if (!currentSid) {
@@ -1122,23 +1136,23 @@ app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
   }
 
   if (sort_order !== undefined) {
-    const newSortOrder = parseInt(sort_order) || 0;
-    if (newSortOrder !== currentSid.sort_order) {
-      // Check if another SID in this landscape has this sort_order
-      const conflicting = db.prepare('SELECT id FROM sids WHERE landscape_id = ? AND sort_order = ? AND id != ?').get(currentSid.landscape_id, newSortOrder, id);
+    let newSortOrder = Math.max(1, Math.min(9, parseInt(sort_order) || 1));
+    const allSids = db.prepare('SELECT id, sort_order FROM sids WHERE landscape_id = ? ORDER BY sort_order, id').all(currentSid.landscape_id);
 
-      if (conflicting) {
-        // Shift conflicting SID correctly
-        const usedOrders = db.prepare('SELECT sort_order FROM sids WHERE landscape_id = ? AND id != ?').all(currentSid.landscape_id, id).map(r => r.sort_order);
-        let nextAvailable = newSortOrder + 1;
-        while (usedOrders.includes(nextAvailable)) {
-          nextAvailable++;
-        }
-        db.prepare('UPDATE sids SET sort_order = ? WHERE id = ?').run(nextAvailable, conflicting.id);
-      }
-      updates.push('sort_order = ?');
-      values.push(newSortOrder);
-    }
+    // Clamp to max number of SIDs
+    if (newSortOrder > allSids.length) newSortOrder = allSids.length;
+
+    // Build the new ordering: remove this SID, then insert at the desired position
+    const otherSids = allSids.filter(s => s.id !== parseInt(id));
+    otherSids.splice(newSortOrder - 1, 0, { id: parseInt(id) });
+
+    // Re-number all SIDs sequentially starting from 1
+    const updateStmt = db.prepare('UPDATE sids SET sort_order = ? WHERE id = ?');
+    otherSids.forEach((s, idx) => {
+      updateStmt.run(idx + 1, s.id);
+    });
+
+    sortOrderHandled = true;
   }
 
   if (name !== undefined) {
@@ -1158,12 +1172,14 @@ app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
     values.push(notes.substring(0, 5000)); // Limit to 5000 chars
   }
 
-  if (updates.length === 0) {
+  if (updates.length === 0 && !sortOrderHandled) {
     return res.status(400).json({ error: 'Keine Änderungen angegeben' });
   }
 
-  values.push(id);
-  db.prepare(`UPDATE sids SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  if (updates.length > 0) {
+    values.push(id);
+    db.prepare(`UPDATE sids SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+  }
   res.json({ success: true });
 });
 
@@ -1656,11 +1672,45 @@ app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
     values.push(1);
   }
   if (role !== undefined) {
-    if (!['admin', 'user'].includes(role)) {
+    // Only teamlead can change roles
+    if (req.user.role !== 'teamlead') {
+      return res.status(403).json({ error: 'Nur Teamleiter können Rollen ändern' });
+    }
+    if (!['admin', 'user', 'teamlead', 'viewer'].includes(role)) {
       return res.status(400).json({ error: 'Ungültige Rolle' });
     }
     updates.push('role = ?');
     values.push(role);
+  }
+
+  const { first_name, last_name } = req.body;
+  if ((first_name !== undefined || last_name !== undefined) && req.user.role !== 'teamlead') {
+    return res.status(403).json({ error: 'Nur Teamleiter können Benutzerdaten ändern' });
+  }
+  if (first_name !== undefined) {
+    updates.push('first_name = ?');
+    values.push(first_name);
+  }
+  if (last_name !== undefined) {
+    updates.push('last_name = ?');
+    values.push(last_name);
+  }
+
+  // Auto-recompute abbreviation when name changes
+  if (first_name !== undefined || last_name !== undefined) {
+    const currentUser = db.prepare('SELECT first_name, last_name, username FROM users WHERE id = ?').get(id);
+    const fn = (first_name !== undefined ? first_name : (currentUser?.first_name || '')).trim().toUpperCase();
+    const ln = (last_name !== undefined ? last_name : (currentUser?.last_name || '')).trim().toUpperCase();
+    if (fn && ln) {
+      const newAbbr = fn[0] + ln[0] + ln[ln.length - 1];
+      updates.push('abbreviation = ?');
+      values.push(newAbbr);
+      // Sync abbreviation to team_members if a matching member exists
+      const memberName = `${first_name !== undefined ? first_name : currentUser?.first_name || ''} ${last_name !== undefined ? last_name : currentUser?.last_name || ''}`.trim();
+      if (memberName) {
+        db.prepare('UPDATE team_members SET abbreviation = ? WHERE LOWER(name) = LOWER(?)').run(newAbbr, memberName);
+      }
+    }
   }
 
   if (updates.length === 0) {
@@ -1926,6 +1976,21 @@ app.get('/api/backup/export', authenticate, requireAdmin, (req, res) => {
       };
     });
 
+    // Get matrix columns (Skills)
+    const matrixColumns = db.prepare('SELECT * FROM matrix_columns ORDER BY sort_order').all();
+
+    // Get matrix values (Qualifikationen)
+    const matrixValues = db.prepare('SELECT * FROM matrix_values').all();
+
+    // Get trainings (Schulungen)
+    const trainings = db.prepare('SELECT * FROM trainings ORDER BY id').all();
+
+    // Get bereitschaft (on-call schedule) — store abbreviation only, not user_id
+    const bereitschaftData = db.prepare('SELECT week_start, abbreviation FROM bereitschaft ORDER BY week_start').all();
+
+    // Get user SID visibility preferences
+    const userSidVisibility = db.prepare('SELECT * FROM user_sid_visibility').all();
+
     const backup = {
       version: APP_VERSION,
       exportDate: new Date().toISOString(),
@@ -1933,7 +1998,12 @@ app.get('/api/backup/export', authenticate, requireAdmin, (req, res) => {
       activityTypes,
       teamMembers,
       maintenanceSundays,
-      landscapes: landscapesWithData
+      landscapes: landscapesWithData,
+      matrixColumns,
+      matrixValues,
+      trainings,
+      bereitschaft: bereitschaftData,
+      userSidVisibility
     };
 
     // Set headers for file download
@@ -1966,7 +2036,12 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
       landscapes: 0,
       sids: 0,
       activities: 0,
-      subActivities: 0
+      subActivities: 0,
+      matrixColumns: 0,
+      matrixValues: 0,
+      trainings: 0,
+      bereitschaft: 0,
+      userSidVisibility: 0
     };
 
     const transaction = db.transaction(() => {
@@ -2106,6 +2181,83 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
                 });
               }
             });
+          }
+        });
+      }
+
+      // 6. Import matrix columns (skills)
+      if (backup.matrixColumns && Array.isArray(backup.matrixColumns)) {
+        db.prepare('DELETE FROM matrix_values').run();
+        db.prepare('DELETE FROM matrix_columns').run();
+
+        const insertCol = db.prepare('INSERT INTO matrix_columns (id, name, sort_order) VALUES (?, ?, ?)');
+        backup.matrixColumns.forEach((col, index) => {
+          insertCol.run(col.id, col.name, col.sort_order ?? index);
+          stats.matrixColumns++;
+        });
+      }
+
+      // 7. Import matrix values (qualifications)
+      if (backup.matrixValues && Array.isArray(backup.matrixValues)) {
+        // matrix_values may already be deleted in step 6, but be safe
+        if (!backup.matrixColumns) {
+          db.prepare('DELETE FROM matrix_values').run();
+        }
+
+        const insertVal = db.prepare('INSERT OR REPLACE INTO matrix_values (team_member_id, column_id, level) VALUES (?, ?, ?)');
+        backup.matrixValues.forEach(val => {
+          insertVal.run(val.team_member_id, val.column_id, val.level || 0);
+          stats.matrixValues++;
+        });
+      }
+
+      // 8. Import trainings
+      if (backup.trainings && Array.isArray(backup.trainings)) {
+        db.prepare('DELETE FROM trainings').run();
+
+        const insertTraining = db.prepare(`
+          INSERT INTO trainings (participants, course, topic, cost, location, date1, date2, date3, days, booked_date)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        backup.trainings.forEach(tr => {
+          insertTraining.run(
+            tr.participants || '',
+            tr.course || '',
+            tr.topic || '',
+            tr.cost || '',
+            tr.location || '',
+            tr.date1 || '',
+            tr.date2 || '',
+            tr.date3 || '',
+            tr.days || 0,
+            tr.booked_date || 0
+          );
+          stats.trainings++;
+        });
+      }
+
+      // 9. Import bereitschaft (on-call schedule) — without user_id
+      if (backup.bereitschaft && Array.isArray(backup.bereitschaft)) {
+        db.prepare('DELETE FROM bereitschaft').run();
+
+        const insertBereitschaft = db.prepare('INSERT INTO bereitschaft (week_start, abbreviation) VALUES (?, ?)');
+        backup.bereitschaft.forEach(entry => {
+          insertBereitschaft.run(entry.week_start, entry.abbreviation || '');
+          stats.bereitschaft++;
+        });
+      }
+
+      // 10. Import user SID visibility
+      if (backup.userSidVisibility && Array.isArray(backup.userSidVisibility)) {
+        db.prepare('DELETE FROM user_sid_visibility').run();
+
+        const insertVis = db.prepare('INSERT INTO user_sid_visibility (user_id, sid_id, visible) VALUES (?, ?, ?)');
+        backup.userSidVisibility.forEach(vis => {
+          try {
+            insertVis.run(vis.user_id, vis.sid_id, vis.visible ?? 1);
+            stats.userSidVisibility++;
+          } catch (e) {
+            // Skip entries with non-existing user/sid references
           }
         });
       }

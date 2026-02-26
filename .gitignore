@@ -12,3 +12,4 @@ test-*.js
 # Debug / temp scripts
 check_*.js
 check_*.py
+.agents/

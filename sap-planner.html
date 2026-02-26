@@ -462,6 +462,14 @@
       background-color: #555869 !important;
     }
 
+    .dark-mode .bg-gray-100 {
+      background-color: #383a4a !important;
+    }
+
+    .dark-mode .bg-gray-200 {
+      background-color: #4a4d5e !important;
+    }
+
     .dark-mode .hover\:bg-gray-700:hover {
       background-color: #4a4d5e !important;
     }
@@ -483,6 +491,84 @@
 
     .dark-mode .csv-dropdown-panel .border-t {
       border-color: #6272a4 !important;
+    }
+
+    /* Datensicherung Dropdown dark mode */
+    .dark-mode .data-dropdown-panel {
+      background-color: #383a4a !important;
+      border-color: #6272a4 !important;
+    }
+
+    .dark-mode .data-dropdown-panel button {
+      color: #f8f8f2 !important;
+    }
+
+    .dark-mode .data-dropdown-panel button:hover {
+      background-color: rgba(98, 160, 234, 0.2) !important;
+      color: #8be9fd !important;
+    }
+
+    .dark-mode .data-dropdown-panel .border-t {
+      border-color: #6272a4 !important;
+    }
+
+    /* Matrix sticky column gap fixes using pseudo-elements (more reliable than box-shadow).
+       Colors: light card=#fff, dark card=#44475a | light bg-gray-200=#e5e7eb, dark=#4a4d5e
+               light bg-gray-50=#f9fafb, dark=#383a4a | light bg-gray-100=#f3f4f6, dark=#383a4a */
+
+    /* Percentage column: simple z-index stacking */
+    .matrix-sticky-percentage-even {
+      z-index: 21 !important;
+    }
+
+    .matrix-sticky-percentage-odd {
+      z-index: 21 !important;
+    }
+
+    .matrix-sticky-percentage-footer {
+      z-index: 21 !important;
+    }
+
+    /* Left name column: simple z-index stacking */
+    .matrix-sticky-left-even {
+      z-index: 21 !important;
+    }
+
+    .matrix-sticky-left-odd {
+      z-index: 21 !important;
+    }
+
+    .matrix-sticky-left-footer {
+      z-index: 21 !important;
+    }
+
+    /* Vertical header: pseudo-elements create opaque covers on both sides */
+    .matrix-sticky-vertical-header {
+      position: relative;
+      z-index: 22 !important;
+    }
+
+    /* ::before = LEFT cover (seals gap between percentage column and vertical header) */
+    .matrix-sticky-vertical-header::before {
+      content: '';
+      position: absolute;
+      top: -1px;
+      bottom: -1px;
+      left: -10px;
+      width: 10px;
+      background-color: #e5e7eb;
+      /* bg-gray-200 - matches own cell bg */
+    }
+
+    .dark-mode .matrix-sticky-vertical-header::before {
+      background-color: #4a4d5e !important;
+      /* dark bg-gray-200 */
+    }
+
+    /* Scroll container clips any right-edge sub-pixel gaps */
+    .matrix-scroll-clip {
+      overflow-x: auto;
+      overflow-y: hidden;
     }
   </style>
 </head>
@@ -1174,6 +1260,7 @@
       const [bMonthIdx, setBMonthIdx] = useState(1);
       const [bPendingDelete, setBPendingDelete] = useState(null); // mondayISO of week pending deletion
       const [showCsvDropdown, setShowCsvDropdown] = useState(false);
+      const [showDataDropdown, setShowDataDropdown] = useState(false);
 
       // Check permissions
       // canEdit: Admin OR Teamlead can edit landscapes, SIDs, activities
@@ -1340,11 +1427,28 @@
         try {
           setLoginError('');
           const userData = await api.login(username, password);
+
+          // Reset UI state manually for instant transition (avoid slow reload)
+          setActiveTab('gantt');
+          setCollapsedLandscapes(new Set());
+          setCollapsedSids(new Set());
+          setCollapsedActivities(new Set());
+          setEditingSidInfo(null);
+          setBPendingDelete(null);
+          setShowCsvDropdown(false);
+
+          // Reset Gantt scroll position to "Today"
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const rangeStart = new Date(year, 0, 1);
+          rangeStart.setDate(rangeStart.getDate() - 60);
+          const offset = Math.max(0, Math.round((today - rangeStart) / (1000 * 60 * 60 * 24)));
+          setViewOffset(offset);
+
           setUser(userData);
           if (userData.version) setAppVersion(userData.version);
-          // Apply user's dark mode preference from server
           applyDarkMode(!!userData.dark_mode);
-          // Check if user must change password on first login
+
           if (userData.must_change_password) {
             setMustChangePassword(true);
           } else {
@@ -1357,9 +1461,10 @@
 
       // Logout handler
       const handleLogout = async () => {
-        await api.logout();
-        setUser(null);
-        setLandscapes([]);
+        try {
+          await api.logout();
+        } catch (e) { }
+        window.location.reload();
       };
 
       // Password change dialog state
@@ -1451,6 +1556,60 @@
         try {
           setUserError('');
           await api.createUser({ username, password, role, first_name, last_name });
+          form.reset();
+          await loadUsers();
+        } catch (error) {
+          setUserError(error.message);
+        }
+      };
+
+      // Edit existing user - populate form
+      const handleEditUser = (u) => {
+        setEditingUser(u);
+        setUserError('');
+        // We need to set form values after React renders, so use a timeout
+        setTimeout(() => {
+          const form = document.querySelector('#userForm');
+          if (form) {
+            form.newUsername.value = u.username;
+            form.newPassword.value = '••••••';
+            form.newRole.value = u.role;
+            form.newFirstName.value = u.first_name || '';
+            form.newLastName.value = u.last_name || '';
+            // Generate Kürzel from name
+            const fn = (u.first_name || '').trim().toUpperCase();
+            const ln = (u.last_name || '').trim().toUpperCase();
+            form.newAbbreviation.value = (fn && ln) ? (fn[0] + ln[0] + ln[ln.length - 1]) : '';
+          }
+        }, 50);
+      };
+
+      // Cancel editing
+      const handleCancelEdit = () => {
+        setEditingUser(null);
+        setUserError('');
+        const form = document.querySelector('#userForm');
+        if (form) form.reset();
+      };
+
+      // Update existing user
+      const handleUpdateUser = async (e) => {
+        e.preventDefault();
+        if (!editingUser) return;
+        const form = e.target;
+        const role = form.newRole.value;
+        const first_name = form.newFirstName ? form.newFirstName.value.trim() : '';
+        const last_name = form.newLastName ? form.newLastName.value.trim() : '';
+
+        if (!first_name || !last_name) {
+          setUserError('Vorname und Nachname erforderlich');
+          return;
+        }
+
+        try {
+          setUserError('');
+          await api.updateUser(editingUser.id, { role, first_name, last_name });
+          setEditingUser(null);
           form.reset();
           await loadUsers();
         } catch (error) {
@@ -1769,12 +1928,18 @@
         const apiField = apiFieldMap[field] || field;
         try {
           await api.updateSid(sidId, { [apiField]: value });
-          setLandscapes(landscapes.map(l =>
-            l.id === landscapeId ? {
-              ...l,
-              sids: l.sids.map(s => s.id !== sidId ? s : { ...s, [field]: value })
-            } : l
-          ));
+          // Reload all landscapes after sort_order change to reflect re-sequenced numbers
+          if (field === 'sort_order') {
+            const data = await api.getLandscapes();
+            setLandscapes(data);
+          } else {
+            setLandscapes(landscapes.map(l =>
+              l.id === landscapeId ? {
+                ...l,
+                sids: l.sids.map(s => s.id !== sidId ? s : { ...s, [field]: value })
+              } : l
+            ));
+          }
         } catch (error) {
           alert('Fehler: ' + error.message);
         }
@@ -2237,6 +2402,54 @@
           setTimeout(() => URL.revokeObjectURL(url), 100);
         } catch (err) {
           alert('Fehler beim Skills CSV Export: ' + err.message);
+        }
+      };
+
+      const exportBereitschaftCSV = () => {
+        try {
+          const BOM = '\ufeff';
+          const now = new Date();
+          const timestamp = now.getFullYear().toString()
+            + String(now.getMonth() + 1).padStart(2, '0')
+            + String(now.getDate()).padStart(2, '0')
+            + '-'
+            + String(now.getHours()).padStart(2, '0')
+            + String(now.getMinutes()).padStart(2, '0')
+            + String(now.getSeconds()).padStart(2, '0');
+
+          const lines = ['KW;Wochenanfang;Wochenende;Kürzel'];
+
+          // Sort bereitschaft by week_start
+          const sorted = [...bereitschaft].sort((a, b) => a.week_start.localeCompare(b.week_start));
+
+          sorted.forEach(entry => {
+            const startDate = new Date(entry.week_start);
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 6);
+
+            // Calculate calendar week (ISO 8601)
+            const tempDate = new Date(startDate.getTime());
+            tempDate.setDate(tempDate.getDate() + 3 - ((tempDate.getDay() + 6) % 7));
+            const week1 = new Date(tempDate.getFullYear(), 0, 4);
+            const kw = 1 + Math.round(((tempDate - week1) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+
+            const formatDE = (d) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+
+            lines.push(`KW${kw};${formatDE(startDate)};${formatDE(endDate)};${entry.abbreviation || ''}`);
+          });
+
+          const csvContent = BOM + lines.join('\r\n');
+          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `SAP-Basis-Bereitschaft-${year}-${timestamp}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 100);
+        } catch (err) {
+          alert('Fehler beim Bereitschaft CSV Export: ' + err.message);
         }
       };
 
@@ -2990,7 +3203,7 @@
                   {/* CSV Export Dropdown */}
                   <div className="relative" style={{ position: 'relative' }}>
                     <button
-                      onClick={() => setShowCsvDropdown(!showCsvDropdown)}
+                      onClick={() => { setShowCsvDropdown(!showCsvDropdown); setShowDataDropdown(false); }}
                       className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
                     >
                       <DownloadIcon /> CSV Export ▾
@@ -3011,6 +3224,14 @@
                             🎓 Skills & Schulungen
                           </button>
                         )}
+                        {user?.role !== 'viewer' && (
+                          <button
+                            onClick={() => { exportBereitschaftCSV(); setShowCsvDropdown(false); }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 border-t border-gray-100"
+                          >
+                            🔔 Bereitschaft
+                          </button>
+                        )}
                         {(user?.role === 'admin' || user?.role === 'teamlead') && (
                           <button
                             onClick={() => { exportTeamCSV(); setShowCsvDropdown(false); }}
@@ -3021,85 +3242,117 @@
                         )}
                       </div>
                     )}
+                    {/* Click-outside closes dropdown */}
+                    {showCsvDropdown && (
+                      <div
+                        className="fixed inset-0"
+                        style={{ zIndex: 9998 }}
+                        onClick={() => setShowCsvDropdown(false)}
+                      />
+                    )}
                   </div>
-                  {/* Click-outside closes dropdown */}
-                  {showCsvDropdown && (
-                    <div
-                      className="fixed inset-0"
-                      style={{ zIndex: 9998 }}
-                      onClick={() => setShowCsvDropdown(false)}
-                    />
-                  )}
-                  {/* JSON Export/Import - Admin + Teamlead */}
+                  {/* Datensicherung Dropdown - Admin + Teamlead */}
                   {(user?.role === 'teamlead' || user?.role === 'admin') && (
-                    <>
-                      <button onClick={exportJSON} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
-                        <DownloadIcon /> JSON Export
-                      </button>
-                      <label className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 cursor-pointer text-sm">
-                        <UploadIcon /> JSON Import
-                        <input type="file" accept=".json,application/json" onChange={importJSON} className="hidden" />
-                      </label>
-                    </>
-                  )}
-                  {/* Backup Export/Import - Teamlead only */}
-                  {user?.role === 'teamlead' && (
-                    <>
+                    <div className="relative" style={{ position: 'relative' }}>
                       <button
-                        onClick={async () => {
-                          try {
-                            const backup = await api.exportBackup();
-                            const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `SAP-Planner-Backup-${new Date().toISOString().slice(0, 10)}.json`;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            setTimeout(() => URL.revokeObjectURL(url), 100);
-                          } catch (error) {
-                            alert('❌ Fehler beim Backup: ' + error.message);
-                          }
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm"
+                        onClick={() => { setShowDataDropdown(!showDataDropdown); setShowCsvDropdown(false); }}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
                       >
-                        📥 Backup
+                        🔒 Datensicherung ▾
                       </button>
-                      <label className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 cursor-pointer text-sm">
-                        📤 Restore
-                        <input type="file" accept=".json,application/json" onChange={async (event) => {
-                          const file = event.target.files?.[0];
-                          if (!file) return;
-                          try {
-                            const text = await file.text();
-                            const backup = JSON.parse(text);
-                            if (!backup.version) {
-                              alert('❌ Ungültige Backup-Datei: Version fehlt');
-                              return;
-                            }
-                            const confirmed = confirm(
-                              `Backup importieren?\n\n` +
-                              `Backup-Version: ${backup.version}\n` +
-                              `Export-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n\n` +
-                              `⚠️ Alle aktuellen Daten werden überschrieben!`
-                            );
-                            if (confirmed) {
-                              const result = await api.importBackup(backup);
-                              alert(
-                                `✅ Backup erfolgreich importiert!\n\n` +
-                                `Importierte Daten:\n` +
-                                Object.entries(result.imported || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n')
-                              );
-                              window.location.reload();
-                            }
-                          } catch (error) {
-                            alert('❌ Fehler beim Import: ' + error.message);
-                          }
-                          event.target.value = '';
-                        }} className="hidden" />
-                      </label>
-                    </>
+                      {showDataDropdown && (
+                        <div className="data-dropdown-panel absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-52" style={{ zIndex: 9999 }}>
+                          <button
+                            onClick={() => { exportJSON(); setShowDataDropdown(false); }}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-t-lg flex items-center gap-2"
+                          >
+                            📤 JSON Export
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById('jsonImportInput').click()}
+                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 border-t border-gray-100"
+                          >
+                            📥 JSON Import
+                          </button>
+                          <input id="jsonImportInput" type="file" accept=".json,application/json" onChange={(e) => { importJSON(e); setShowDataDropdown(false); }} className="hidden" />
+                          {user?.role === 'teamlead' && (
+                            <button
+                              onClick={async () => {
+                                setShowDataDropdown(false);
+                                try {
+                                  const backup = await api.exportBackup();
+                                  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `SAP-Planner-Backup-${new Date().toISOString().slice(0, 10)}.json`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  setTimeout(() => URL.revokeObjectURL(url), 100);
+                                } catch (error) {
+                                  alert('❌ Fehler beim Backup: ' + error.message);
+                                }
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 border-t border-gray-100"
+                            >
+                              📥 Backup
+                            </button>
+                          )}
+                          {user?.role === 'teamlead' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => document.getElementById('restoreBackupInput').click()}
+                                className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
+                              >
+                                📤 Restore
+                              </button>
+                              <input id="restoreBackupInput" type="file" accept=".json,application/json" onChange={async (event) => {
+                                setShowDataDropdown(false);
+                                const file = event.target.files?.[0];
+                                if (!file) return;
+                                try {
+                                  const text = await file.text();
+                                  const backup = JSON.parse(text);
+                                  if (!backup.version) {
+                                    alert('❌ Ungültige Backup-Datei: Version fehlt');
+                                    return;
+                                  }
+                                  const confirmed = confirm(
+                                    `Backup importieren?\n\n` +
+                                    `Backup-Version: ${backup.version}\n` +
+                                    `Export-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n\n` +
+                                    `⚠️ Alle aktuellen Daten werden überschrieben!`
+                                  );
+                                  if (confirmed) {
+                                    const result = await api.importBackup(backup);
+                                    alert(
+                                      `✅ Backup erfolgreich importiert!\n\n` +
+                                      `Importierte Daten:\n` +
+                                      Object.entries(result.imported || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n')
+                                    );
+                                    window.location.reload();
+                                  }
+                                } catch (error) {
+                                  alert('❌ Fehler beim Import: ' + error.message);
+                                }
+                                event.target.value = '';
+                              }} className="hidden" />
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {/* Click-outside closes dropdown */}
+                      {showDataDropdown && (
+                        <div
+                          className="fixed inset-0"
+                          style={{ zIndex: 9998 }}
+                          onClick={() => setShowDataDropdown(false)}
+                        />
+                      )}
+                    </div>
                   )}
                   {/* Logfiles - Admin + Teamlead */}
                   {canEdit && (
@@ -3461,19 +3714,25 @@
                           <div className="relative">
                             <input
                               type="number"
-                              defaultValue={sid.sort_order || 0}
+                              defaultValue={sid.sort_order || 1}
                               key={`sid-sort-${sid.id}-${sid.sort_order}`}
                               disabled={!canEdit || isLockedByOther}
-                              min="0"
-                              max="999"
+                              min="1"
+                              max="9"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.target.blur();
+                                }
+                              }}
                               onBlur={(e) => {
-                                const val = e.target.value.replace(/[^0-9]/g, '');
-                                if (val !== String(sid.sort_order || 0)) {
+                                let val = Math.max(1, Math.min(9, parseInt(e.target.value) || 1));
+                                e.target.value = val;
+                                if (val !== (sid.sort_order || 1)) {
                                   updateSID(landscape.id, sid.id, 'sort_order', val);
                                 }
                               }}
                               className={`w-8 h-8 text-center font-bold text-blue-700 bg-blue-100 border border-blue-300 rounded focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 ${(!canEdit || isLockedByOther) ? 'cursor-default opacity-50' : 'cursor-text dark-mode:bg-blue-800/30'}`}
-                              title="Sortierung (je kleiner, desto weiter oben)"
+                              title="Position (1-9, Enter zum Bestätigen)"
                             />
                           </div>
 
@@ -4225,7 +4484,11 @@
                           <div key={u.id} className="p-3 hover:bg-gray-50">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
-                                <span className="font-medium">{u.username}</span>
+                                {user?.role === 'teamlead' ? (
+                                  <span className="font-medium cursor-pointer hover:text-blue-600 hover:underline" onClick={() => handleEditUser(u)} title="Klicken zum Bearbeiten">{u.username}</span>
+                                ) : (
+                                  <span className="font-medium">{u.username}</span>
+                                )}
                                 {(u.first_name || u.last_name) && (
                                   <span className="text-sm text-gray-500">
                                     {u.first_name} {u.last_name}
@@ -4312,20 +4575,21 @@
                     </div>
                   </div>
 
-                  {/* Add New User Form */}
+                  {/* Add/Edit User Form */}
                   {user?.role === 'teamlead' && (
                     <div className="border-t pt-4">
-                      <h3 className="font-semibold mb-2">Neuen Benutzer anlegen:</h3>
-                      <form onSubmit={handleAddUser} className="flex flex-col gap-2">
+                      <h3 className="font-semibold mb-2">{editingUser ? `Benutzer "${editingUser.username}" bearbeiten:` : 'Neuen Benutzer anlegen:'}</h3>
+                      <form id="userForm" onSubmit={editingUser ? handleUpdateUser : handleAddUser} className="flex flex-col gap-2">
                         <div className="flex flex-wrap gap-2 items-end">
                           <div className="flex-1 min-w-32">
                             <label className="block text-xs text-gray-600 mb-1">Benutzername</label>
                             <input
                               type="text"
                               name="newUsername"
-                              required
+                              required={!editingUser}
+                              disabled={!!editingUser}
                               placeholder="username"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm ${editingUser ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                           </div>
                           <div className="flex-1 min-w-32">
@@ -4333,10 +4597,11 @@
                             <input
                               type="password"
                               name="newPassword"
-                              required
+                              required={!editingUser}
+                              disabled={!!editingUser}
                               minLength="6"
                               placeholder="••••••"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm ${editingUser ? 'bg-gray-100 text-gray-500' : ''}`}
                             />
                           </div>
                           <div className="w-36">
@@ -4392,19 +4657,39 @@
                               }}
                             />
                           </div>
-                          <button
-                            type="submit"
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-                          >
-                            + Anlegen
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setShowUserDialog(false)}
-                            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
-                          >
-                            Schließen
-                          </button>
+                          {editingUser ? (
+                            <>
+                              <button
+                                type="submit"
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                              >
+                                💾 Speichern
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCancelEdit}
+                                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+                              >
+                                Abbrechen
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="submit"
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
+                              >
+                                + Anlegen
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowUserDialog(false)}
+                                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+                              >
+                                Schließen
+                              </button>
+                            </>
+                          )}
                         </div>
                       </form>
                     </div>
@@ -4438,7 +4723,7 @@
                 {/* Qualifikationsmatrix */}
                 <div className="mb-12">
                   <h3 className="text-xl font-semibold mb-4 text-gray-700">Qualifikationsmatrix</h3>
-                  <div className="overflow-x-auto pb-4">
+                  <div className="matrix-scroll-clip pb-4">
                     <table className="w-full border-collapse">
                       <thead>
                         <tr className="bg-[#00b0f0] text-white">
@@ -4498,11 +4783,11 @@
                           {/* Spacer content to absorb table width when the browser window is wide */}
                           <th className="w-full p-0 border-b border-[#00b0f0] bg-[#00b0f0]"></th>
                           {matrixColumns.length > 0 && (
-                            <th className="p-2 border-b border-[#00b0f0] bg-[#00b0f0] text-center w-10 min-w-[40px] max-w-[40px] sticky right-[32px] z-20 shadow-[-1px_0_0_#00b0f0]">
+                            <th className="p-0 border-b border-[#00b0f0] bg-[#00b0f0] text-center w-[46px] min-w-[46px] max-w-[46px]">
                             </th>
                           )}
                           {matrixColumns.length > 0 && (
-                            <th className="p-0 border-b border-[#00b0f0] bg-[#00b0f0] w-8 min-w-[32px] max-w-[32px] sticky right-0 z-30">
+                            <th className="p-0 border-b border-[#00b0f0] bg-[#00b0f0] w-8 min-w-[32px] max-w-[32px]">
                             </th>
                           )}
                         </tr>
@@ -4540,7 +4825,7 @@
 
                           return (
                             <tr key={member.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                              <td className={`p-3 border-b border-gray-200 font-medium text-gray-800 sticky left-0 z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} shadow-[1px_0_0_#e5e7eb] w-[180px] min-w-[180px] max-w-[180px] whitespace-normal break-words`}>
+                              <td className={`p-3 border-b border-gray-200 font-medium text-gray-800 sticky left-0 ${index % 2 === 0 ? 'bg-white matrix-sticky-left-even' : 'bg-gray-50 matrix-sticky-left-odd'} w-[180px] min-w-[180px] max-w-[180px] whitespace-normal break-words`}>
                                 {member.name.split(' ').map((part, i, arr) => (
                                   <span key={i}>
                                     {part}
@@ -4593,12 +4878,12 @@
                               {/* Spacer content to absorb table width */}
                               <td className="w-full p-0 border-b border-gray-200"></td>
                               {matrixColumns.length > 0 && (
-                                <td className={`p-2 border-b border-gray-200 text-center font-bold text-gray-800 text-sm sticky right-[32px] z-10 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} shadow-[-1px_0_0_#e5e7eb] w-10 min-w-[40px] max-w-[40px]`}>
+                                <td className={`py-2 pl-0 pr-[6px] border-b border-gray-200 text-center font-bold text-gray-800 text-sm sticky right-[28px] ${index % 2 === 0 ? 'bg-white matrix-sticky-percentage-even' : 'bg-gray-50 matrix-sticky-percentage-odd'} w-[46px] min-w-[46px] max-w-[46px]`}>
                                   {possibleScore > 0 ? Math.round((memberTotalScore / possibleScore) * 100) : 0}%
                                 </td>
                               )}
                               {matrixColumns.length > 0 && index === 0 && (
-                                <td rowSpan={teamMembers.length + 1} className="p-1 border-t border-b border-gray-300 bg-gray-200 text-center border-l shadow-inner w-8 min-w-[32px] max-w-[32px] align-middle sticky right-0 z-20">
+                                <td rowSpan={teamMembers.length + 1} className="p-0 border-t border-b border-gray-300 bg-gray-200 text-center w-8 min-w-[32px] max-w-[32px] align-middle sticky right-0 matrix-sticky-vertical-header">
                                   <div className="flex flex-col items-center justify-center h-full">
                                     <span className="transform -rotate-180 text-gray-900 font-bold tracking-wider text-sm whitespace-nowrap" style={{ writingMode: 'vertical-rl' }}>
                                       Themenabdeckung Mitarbeiter
@@ -4611,7 +4896,7 @@
                         })}
                         {teamMembers.length > 0 && matrixColumns.length > 0 && (
                           <tr className="bg-gray-100 relative">
-                            <td className="p-3 border-t-2 border-b border-gray-300 font-bold text-gray-800 sticky left-0 z-10 bg-gray-100 shadow-[1px_0_0_#d1d5db] text-center w-[180px] min-w-[180px] max-w-[180px]">
+                            <td className="p-3 border-t-2 border-b border-gray-300 font-bold text-gray-800 sticky left-0 z-10 bg-gray-100 matrix-sticky-left-footer text-center w-[180px] min-w-[180px] max-w-[180px]">
                               <div className="flex flex-col items-center">
                                 <span>Themenabdeckung</span>
                                 <span>Team</span>
@@ -4635,7 +4920,7 @@
                               );
                             })}
                             <td className="w-full p-0 border-t-2 border-b border-gray-300 bg-gray-100"></td>
-                            <td className="p-2 border-t-2 border-b border-gray-300 bg-gray-100 sticky right-[32px] z-10 shadow-[-1px_0_0_#d1d5db] w-10 min-w-[40px] max-w-[40px]"></td>
+                            <td className="p-0 border-t-2 border-b border-gray-300 bg-gray-100 sticky right-[28px] z-10 matrix-sticky-percentage-footer w-[46px] min-w-[46px] max-w-[46px]"></td>
                           </tr>
                         )}
                         {teamMembers.length === 0 && (
@@ -5001,11 +5286,12 @@
                     <div className="text-center font-bold text-base mb-2 text-[#00b0f0]">
                       {MONTH_NAMES[m]} {y}
                     </div>
-                    <table className="w-full border-collapse text-xs">
+                    <table className="w-full border-collapse text-xs table-fixed">
                       <thead>
                         <tr>
+                          <th className="text-center py-1 font-semibold w-[10%] text-gray-300 border-r border-gray-100">KW</th>
                           {DAY_LETTERS.map((l, i) => (
-                            <th key={i} className={`text-center py-1 font-semibold ${i >= 5 ? 'text-red-400' : 'text-gray-500'}`}>{l}</th>
+                            <th key={i} className={`text-center py-1 font-semibold w-[12.85%] ${i >= 5 ? 'text-red-400' : 'text-gray-500'}`}>{l}</th>
                           ))}
                         </tr>
                       </thead>
@@ -5022,34 +5308,37 @@
 
                           let rowBg = '';
                           if (entry) {
-                            rowBg = isOwn ? 'bg-blue-100' : 'bg-green-100';
-                          } else if (isThisWeek) {
-                            rowBg = 'bg-yellow-50';
+                            rowBg = isOwn ? 'bg-indigo-50/50' : 'bg-emerald-50/50';
                           }
 
                           return (
                             <tr
                               key={wi}
                               onClick={() => handleWeekClick(mondayISO)}
-                              className={`cursor-pointer transition-colors hover:brightness-95 rounded ${rowBg} ${entry && !canDelete ? 'cursor-default' : ''}`}
+                              className={`cursor-pointer rounded ${rowBg} ${entry && !canDelete ? 'cursor-default' : ''} group`}
                               title={entry ? `${entry.abbreviation}${canDelete ? ' – Klicken zum Löschen' : ''}` : 'Woche beanspruchen'}
                             >
+                              <td className={`text-center py-1 px-0.5 text-[9px] border-r border-gray-100 font-mono ${isThisWeek ? '!bg-amber-400 !text-amber-950 font-bold !brightness-100' : 'text-gray-300'}`}>
+                                {getISOWeekNumber(week.monday)}
+                              </td>
                               {week.days.map((day, di) => {
                                 const inMonth = day.getMonth() === m;
                                 const isToday = toISO(day) === toISO(today);
                                 return (
-                                  <td key={di} className={`text-center py-1 px-0.5 rounded
+                                  <td key={di} className={`text-center py-1 px-0 rounded relative transition-all group-hover:brightness-95
                                     ${di >= 5 ? 'text-red-400' : ''}
                                     ${!inMonth ? 'text-gray-300' : ''}
                                     ${isToday ? 'font-bold underline' : ''}
                                   `}>
-                                    {di === 0 && entry ? (
-                                      <span className="inline-flex items-center justify-center w-full h-5">
-                                        <span className="text-[10px] font-bold text-blue-800 truncate">{entry.abbreviation}</span>
-                                      </span>
-                                    ) : (
-                                      <span>{inMonth ? day.getDate() : ''}</span>
-                                    )}
+                                    <div className="flex items-center justify-center min-h-[1.25rem] w-full overflow-hidden">
+                                      {di === 0 && entry ? (
+                                        <span className={`text-[9px] font-bold px-1 rounded shadow-sm truncate w-[90%] ${isOwn ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'}`}>
+                                          {entry.abbreviation}
+                                        </span>
+                                      ) : (
+                                        <span>{inMonth ? day.getDate() : ''}</span>
+                                      )}
+                                    </div>
                                   </td>
                                 );
                               })}
@@ -5072,13 +5361,13 @@
                       {/* Legend */}
                       <div className="flex gap-3 text-xs items-center">
                         <span className="flex items-center gap-1">
-                          <span className="w-3 h-3 rounded bg-blue-100 inline-block border border-blue-300"></span> Eigene
+                          <span className="w-3 h-3 rounded bg-indigo-600 inline-block shadow-sm"></span> Eigene
                         </span>
                         <span className="flex items-center gap-1">
-                          <span className="w-3 h-3 rounded bg-green-100 inline-block border border-green-300"></span> Andere
+                          <span className="w-3 h-3 rounded bg-emerald-600 inline-block shadow-sm"></span> Andere
                         </span>
                         <span className="flex items-center gap-1">
-                          <span className="w-3 h-3 rounded bg-yellow-50 inline-block border border-yellow-200"></span> Akt. Woche
+                          <span className="w-3 h-3 rounded bg-amber-400 inline-block shadow-sm"></span> Akt. Woche
                         </span>
                       </div>
                       {/* Toggle */}
@@ -5162,7 +5451,8 @@
                         return (
                           <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
                             {/* Day header */}
-                            <div className="grid grid-cols-7 bg-[#00b0f0] text-white">
+                            <div className="grid grid-cols-[50px_repeat(7,1fr)] bg-[#00b0f0] text-white">
+                              <div className="text-center py-2 text-sm font-semibold border-r border-white/20">KW</div>
                               {['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'].map((d, i) => (
                                 <div key={i} className={`text-center py-2 text-sm font-semibold ${i >= 5 ? 'opacity-70' : ''}`}>{d}</div>
                               ))}
@@ -5177,32 +5467,39 @@
 
                               // Strong, clearly visible background colours
                               let weekBg = wi % 2 === 0 ? 'bg-white' : 'bg-gray-50';
-                              let borderAccent = '';
                               if (entry) {
-                                weekBg = isOwn ? 'bg-blue-100' : 'bg-emerald-100';
-                                borderAccent = isOwn ? 'border-l-4 border-l-blue-500' : 'border-l-4 border-l-emerald-500';
-                              } else if (isThisWeek) {
-                                weekBg = 'bg-amber-50';
-                                borderAccent = 'border-l-4 border-l-amber-400';
+                                weekBg = isOwn ? 'bg-indigo-50/50' : 'bg-emerald-50/50';
                               }
                               // Pending delete overrides background
                               if (bPendingDelete === mondayISO) {
-                                weekBg = 'bg-red-100';
-                                borderAccent = 'border-l-4 border-l-red-500';
+                                weekBg = 'bg-red-50/50';
                               }
 
                               return (
                                 <div
                                   key={wi}
                                   onClick={() => handleWeekClick(mondayISO)}
-                                  className={`grid grid-cols-7 border-t border-gray-200 cursor-pointer transition-all hover:brightness-95 ${weekBg} ${borderAccent} ${entry && !canDelete ? 'cursor-default' : ''}`}
+                                  className={`grid grid-cols-[50px_repeat(7,1fr)] border-t border-gray-200 cursor-pointer transition-all ${weekBg} ${entry && !canDelete ? 'cursor-default' : ''} group relative`}
                                   title={entry ? `${entry.abbreviation}${canDelete ? ' – Klicken zum Löschen' : ''}` : 'Woche beanspruchen'}
                                 >
+                                  {/* Absolute selection bar to prevent gap and layout shift */}
+                                  {entry && (
+                                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${isOwn ? 'bg-indigo-600' : 'bg-emerald-600'} z-10`} />
+                                  )}
+                                  {/* Pending delete bar */}
+                                  {bPendingDelete === mondayISO && (
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-600 z-10" />
+                                  )}
+
+                                  {/* KW Column */}
+                                  <div className={`flex items-center justify-center border-r border-gray-200 font-mono text-sm ${isThisWeek ? '!bg-amber-400 !text-amber-950 font-bold !brightness-100' : 'bg-gray-50/30 text-gray-300'}`}>
+                                    {getISOWeekNumber(week.monday)}
+                                  </div>
                                   {week.days.map((day, di) => {
                                     const inMonth = day.getMonth() === m;
                                     const isToday = toISO(day) === toISO(today);
                                     return (
-                                      <div key={di} className={`relative p-2 min-h-[64px] ${di === 0 ? '' : 'border-l border-gray-100'} ${di >= 5 ? 'opacity-60' : ''}`}>
+                                      <div key={di} className={`relative p-2 min-h-[64px] transition-all group-hover:brightness-95 ${di === 0 ? '' : 'border-l border-gray-100'} ${di >= 5 ? 'opacity-60' : ''}`}>
                                         {/* Date number */}
                                         <span className={`text-sm font-medium ${!inMonth ? 'text-gray-300' : isToday ? 'text-white bg-blue-500 rounded-full w-6 h-6 flex items-center justify-center' : 'text-gray-700'}`}>
                                           {day.getDate()}
@@ -5211,11 +5508,11 @@
                                         {di === 0 && entry && (
                                           <div className="absolute left-1 bottom-2">
                                             {bPendingDelete === mondayISO ? (
-                                              <span className="px-2 py-0.5 rounded-md text-xs font-bold tracking-wide shadow-sm whitespace-nowrap bg-red-600 text-white animate-pulse">
+                                              <span className="px-2 py-1 rounded-md text-xs font-bold tracking-wide shadow-md whitespace-nowrap bg-red-600 text-white animate-pulse border border-red-400">
                                                 🗑 Löschen?
                                               </span>
                                             ) : (
-                                              <span className={`px-2 py-0.5 rounded-md text-xs font-bold tracking-wide shadow-sm whitespace-nowrap ${isOwn ? 'bg-blue-500 text-white' : 'bg-emerald-500 text-white'}`}>
+                                              <span className={`px-2 py-1 rounded-md text-xs font-bold tracking-wide shadow-md whitespace-nowrap border ${isOwn ? 'bg-indigo-600 text-white border-indigo-400' : 'bg-emerald-600 text-white border-emerald-400'}`}>
                                                 {entry.abbreviation}
                                               </span>
                                             )}
