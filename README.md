@@ -1,13 +1,13 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.1.6** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer) und bietet eine REST-API für die Verwaltung von Planungsdaten.
+Version **0.1.7** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer) und bietet eine REST-API für die Verwaltung von Planungsdaten.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
 ## Inhaltsverzeichnis
 
 - [Überblick & Architektur](#überblick--architektur)
-- [Neue Features (v0.1.6)](#neue-features-v016)
+- [Neue Features (v0.1.7)](#neue-features-v017)
 - [Installation & Start (Lokal)](#installation--start-lokal)
 - [Produktions-Deployment](#produktions-deployment)
 - [HTTPS aktivieren](#https-aktivieren)
@@ -82,7 +82,7 @@ Planung mit DB/
 
 ---
 
-## Neue Features (v0.1.6)
+## Neue Features (v0.1.7)
 
 * **Viewer-Rolle:** Neue Nur-Lese-Rolle für den Gantt-Chart (mit Sichtbarkeits-Toggles).
 * **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
@@ -104,7 +104,7 @@ Alle Lösch-Aktionen in der Gantt-Ansicht sowie der Teamverwaltung sind nun mit 
 
 ---
 
-## Features (v0.1.6)
+## Features (v0.1.7)
 
 ### 🌙 Dark Mode
 
