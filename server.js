@@ -37,7 +37,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const activeUsers = new Map();
 
 // Read version from package.json
-let APP_VERSION = '0.1.7';
+let APP_VERSION = '0.2.0';
 try {
   const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
   APP_VERSION = packageJson.version || '1.0.0';

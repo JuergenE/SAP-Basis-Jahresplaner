@@ -1,13 +1,13 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.1.7** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer) und bietet eine REST-API für die Verwaltung von Planungsdaten.
+Version **0.2.0** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer) und bietet eine REST-API für die Verwaltung von Planungsdaten.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
 ## Inhaltsverzeichnis
 
 - [Überblick & Architektur](#überblick--architektur)
-- [Neue Features (v0.1.7)](#neue-features-v017)
+- [Neue Features (v0.2.0)](#neue-features-v020)
 - [Installation & Start (Lokal)](#installation--start-lokal)
 - [Produktions-Deployment](#produktions-deployment)
 - [HTTPS aktivieren](#https-aktivieren)
@@ -82,7 +82,7 @@ Planung mit DB/
 
 ---
 
-## Neue Features (v0.1.7)
+## Neue Features (v0.2.0)
 
 * **Viewer-Rolle:** Neue Nur-Lese-Rolle für den Gantt-Chart (mit Sichtbarkeits-Toggles).
 * **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
@@ -104,7 +104,7 @@ Alle Lösch-Aktionen in der Gantt-Ansicht sowie der Teamverwaltung sind nun mit 
 
 ---
 
-## Features (v0.1.7)
+## Features (v0.2.0)
 
 ### 🌙 Dark Mode
 
@@ -147,6 +147,8 @@ Ein umfassendes Sicherheits-Audit wurde durchgeführt. Die Anwendung ist für de
 - Siehe [security_status_report.md](file:///Users/juergen/.gemini/antigravity/brain/96b04c95-df6b-43c7-b797-212f2e5aeef8/security_status_report.md) (internes Dokument) für Details.
 
 ### 🔐 Weitere Verbesserungen
+
+*   **SID Nummerierung (1-9):** Systeme (SIDs) innerhalb einer Landschaft werden nun automatisch sequentiell nummeriert. Die Nummerierung beschränkt sich dabei auf die Ziffern 1 bis 9 (z.B., `1. DEV`, `2. QAS`). Diese Reihenfolge wird beim Erstellen neuer oder dem Umbenennen bestehender Systeme validiert und sichergestellt.
 
 ---
 
