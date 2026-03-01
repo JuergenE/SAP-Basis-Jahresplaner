@@ -318,23 +318,23 @@ Für **öffentlich erreichbare** Installationen mit gültigem SSL-Zertifikat. Er
 
 ### Benutzerrollen
 
-| Feature | Teamlead (Superuser) | Admin | User |
-|---|---|---|---|
-| **Daten anzeigen** | ✅ | ✅ | ✅ |
-| **SIDs auf-/zuklappen** | ✅ | ✅ | ✅ |
-| **Dark Mode** | ✅ | ✅ | ✅ |
-| **Gantt-Sichtbarkeit (pro User)** | ✅ | ✅ | ✅ |
-| **CSV Export** | ✅ | ✅ | ✅ |
-| **Landschaften verwalten** | ✅ | ✅ | ❌ |
-| **SIDs verwalten** | ✅ | ✅ | ❌ |
-| **Aktivitäten verwalten** | ✅ | ✅ | ❌ |
-| **Team-Zuordnung** | ✅ | ✅ | ❌ |
-| **Einstellungen** | ✅ | ✅ | ❌ |
-| **JSON Import/Export** | ✅ | ✅ | ❌ |
-| **Backup / Restore** | ✅ | ✅ | ❌ |
-| **Team Management Tab** | ✅ | ✅ | ❌ |
-| **Benutzer erstellen** | ✅ Admin, User | ✅ User | ❌ |
-| **Benutzer löschen** | ✅ Admin, User | ✅ User | ❌ |
+| Feature | Teamlead (Superuser) | Admin | User | Viewer |
+|---|---|---|---|---|
+| **Daten anzeigen** | ✅ | ✅ | ✅ | ✅ |
+| **SIDs auf-/zuklappen** | ✅ | ✅ | ✅ | ✅ |
+| **Dark Mode** | ✅ | ✅ | ✅ | ✅ |
+| **Gantt-Sichtbarkeit (pro User)** | ✅ | ✅ | ✅ | ✅ |
+| **CSV Export** | ✅ | ✅ | ✅ | ✅ |
+| **Landschaften verwalten** | ✅ | ✅ | ❌ | ❌ |
+| **SIDs verwalten** | ✅ | ✅ | ❌ | ❌ |
+| **Aktivitäten verwalten** | ✅ | ✅ | ❌ | ❌ |
+| **Team-Zuordnung** | ✅ | ✅ | ❌ | ❌ |
+| **Einstellungen** | ✅ | ✅ | ❌ | ❌ |
+| **JSON Import/Export** | ✅ | ✅ | ❌ | ❌ |
+| **Backup / Restore** | ✅ | ✅ | ❌ | ❌ |
+| **Team Management Tab** | ✅ | ✅ | ❌ | ❌ |
+| **Benutzer erstellen** | ✅ Admin, User, Viewer | ✅ User, Viewer | ❌ | ❌ |
+| **Benutzer löschen** | ✅ Admin, User, Viewer | ✅ User, Viewer | ❌ | ❌ |
 
 > **Note:** Teamlead cannot be deleted. There must always be at least one Teamlead.
 

@@ -2531,7 +2531,7 @@ const startServer = () => {
 ║   Server läuft auf: https://localhost:${PORT}                  ║
 ║   Datenbank: ${path.basename(dbPath)}                                   ║
 ║                                                               ║
-║   Standard-Login: admin (Passwort nach Erstanmeldung ändern!) ║
+║   Standard-Login: admin (Passwort später ändern!)             ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
         `);
@@ -2557,7 +2557,7 @@ const startHttp = () => {
 ║   Server läuft auf: http://${HOST}:${PORT}                       ║
 ║   Datenbank: ${path.basename(dbPath)}                                   ║
 ║                                                               ║
-║   Standard-Login: teamlead (Passwort nach Erstanmeldung ändern!) ║
+║   Standard-Login: teamlead (Passwort später ändern!)          ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
     `);
