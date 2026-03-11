@@ -15,6 +15,7 @@ check.js
 check_*.js
 check_*.py
 manage-users.js
+parse_jsx.js
 # Data directory
 data/
 .agents/

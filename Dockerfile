@@ -19,6 +19,13 @@ COPY package*.json ./
 # npm ci ensures clean install from lockfile and builds native modules like better-sqlite3
 RUN npm ci
 
+# Copy all source files
+COPY . .
+
+# Build Tailwind CSS and Babel JS payloads
+RUN npm run build:css
+RUN npm run build:js
+
 # Create data directory here (so we can copy it with permissions later)
 RUN mkdir -p data
 
@@ -42,6 +49,10 @@ COPY --from=builder --chown=node:node /src/data ./data
 
 # Copy installed node_modules from builder
 COPY --from=builder --chown=node:node /src/node_modules ./node_modules
+
+# Copy built frontend assets from builder
+COPY --from=builder --chown=node:node /src/styles.css ./
+COPY --from=builder --chown=node:node /src/app.js ./
 
 # Copy application source code
 # Since we are restricted to specific files based on .dockerignore, we can copy .

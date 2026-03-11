@@ -8,7 +8,11 @@
     },
     "scripts": {
         "start": "node server.js",
-        "dev": "node --watch server.js"
+        "dev": "node --watch server.js",
+        "build:css": "npx @tailwindcss/cli -i ./input.css -o ./styles.css --minify",
+        "dev:css": "npx @tailwindcss/cli -i ./input.css -o ./styles.css --watch",
+        "build:js": "babel app.jsx --out-file app.js --minified --presets @babel/preset-react",
+        "dev:js": "babel app.jsx --out-file app.js --watch --presets @babel/preset-react"
     },
     "keywords": [
         "sap",
@@ -26,5 +30,11 @@
         "express-rate-limit": "^8.2.1",
         "helmet": "^8.1.0",
         "uuid": "^13.0.0"
+    },
+    "devDependencies": {
+        "@babel/cli": "^7.28.6",
+        "@babel/preset-react": "^7.28.5",
+        "@tailwindcss/cli": "^4.2.1",
+        "tailwindcss": "^4.2.1"
     }
 }

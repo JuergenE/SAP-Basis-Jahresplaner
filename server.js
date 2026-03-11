@@ -93,7 +93,7 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 
 // Serve only specific frontend files (not server.js, package.json, etc.)
-const allowedStaticFiles = ['sap-planner.html', 'screenshot.png'];
+const allowedStaticFiles = ['sap-planner.html', 'screenshot.png', 'styles.css', 'app.js'];
 app.get('/:filename', (req, res, next) => {
   if (allowedStaticFiles.includes(req.params.filename)) {
     return res.sendFile(path.join(__dirname, req.params.filename));

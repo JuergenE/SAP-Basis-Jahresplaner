@@ -31,6 +31,15 @@ node_modules/
 *.md
 !README.md
 
+# Build artifacts (copied separately from builder)
+app.js
+styles.css
+
+# Frontend source files (compiled, not needed at runtime)
+app.jsx
+input.css
+tailwind.config.js
+
 # Screenshots and images (optional in container)
 screenshot.png
 
