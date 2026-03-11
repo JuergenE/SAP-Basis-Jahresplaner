@@ -754,7 +754,14 @@ const SAPBasisPlanner = () => {
   const [activityTypes, setActivityTypes] = useState(defaultActivityTypes);
   const [editingTypeId, setEditingTypeId] = useState(null);
   // Tab navigation
-  const [activeTab, setActiveTab] = useState('gantt'); // 'gantt' or 'team'
+  const [activeTab, setActiveTab] = useState('gantt'); // 'gantt', 'team', 'skills', 'bereitschaft', 'auswertung'
+  // Auswertung (Analysis) tab filter
+  const [auswertungFilter, setAuswertungFilter] = useState({ type: 'year', value: '' });
+  // Auswertung chart refs (must be at top level to satisfy Rules of Hooks)
+  const pieCanvasRef = React.useRef(null);
+  const barCanvasRef = React.useRef(null);
+  const pieChartRef = React.useRef(null);
+  const barChartRef = React.useRef(null);
   // Team members
   const [teamMembers, setTeamMembers] = useState([]);
   // Version
@@ -3075,6 +3082,17 @@ const SAPBasisPlanner = () => {
               Bereitschaft
             </button>
           )}
+          {user?.role === 'teamlead' && (
+            <button
+              onClick={() => setActiveTab('auswertung')}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'auswertung'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              📈 Auswertung
+            </button>
+          )}
         </div>
 
         {/* Legend - visible only when Gantt tab is active */}
@@ -5099,6 +5117,418 @@ const SAPBasisPlanner = () => {
                     );
                   })()}
                 </div>
+              )}
+            </div>
+          );
+        })()
+      }
+
+      {/* ================================================================= */}
+      {/* Auswertung (Analysis) Tab — teamlead only                        */}
+      {/* ================================================================= */}
+      {
+        activeTab === 'auswertung' && (() => {
+          // ── Filter helpers ──
+          const currentYear = String(year);
+          const filterType = auswertungFilter.type || 'year';
+          const filterValue = auswertungFilter.value || currentYear;
+
+          // Determine date range from filter
+          const getFilterRange = () => {
+            if (filterType === 'year') {
+              return { start: `${currentYear}-01-01`, end: `${currentYear}-12-31` };
+            }
+            if (filterType === 'quarter') {
+              const q = parseInt(filterValue) || 1;
+              const sm = (q - 1) * 3;
+              const em = sm + 2;
+              const endDay = new Date(year, em + 1, 0).getDate();
+              return {
+                start: `${currentYear}-${String(sm + 1).padStart(2, '0')}-01`,
+                end: `${currentYear}-${String(em + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+              };
+            }
+            if (filterType === 'month') {
+              const m = parseInt(filterValue) || 1;
+              const endDay = new Date(year, m, 0).getDate();
+              return {
+                start: `${currentYear}-${String(m).padStart(2, '0')}-01`,
+                end: `${currentYear}-${String(m).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+              };
+            }
+            return { start: `${currentYear}-01-01`, end: `${currentYear}-12-31` };
+          };
+
+          const range = getFilterRange();
+
+          // Check if an activity/sub-activity overlaps the filter range
+          const overlaps = (startDate, duration) => {
+            if (!startDate) return false;
+            const actStart = startDate;
+            // Rough end estimate: startDate + duration days
+            const endD = new Date(startDate);
+            endD.setDate(endD.getDate() + Math.max(0, (duration || 1) - 1));
+            const actEnd = formatDateISO(endD);
+            return actStart <= range.end && actEnd >= range.start;
+          };
+
+          // ── Aggregate data ──
+          const allActivities = [];
+          landscapes.forEach(landscape => {
+            landscape.sids.forEach(sid => {
+              (sid.activities || []).forEach(activity => {
+                if (overlaps(activity.startDate, activity.duration)) {
+                  allActivities.push({
+                    landscape: landscape.name,
+                    sid: sid.name,
+                    typeId: activity.type || activity.type_id,
+                    duration: parseInt(activity.duration) || 0,
+                    teamMemberId: activity.teamMemberId || activity.team_member_id || null,
+                    startDate: activity.startDate,
+                    startTime: activity.startTime || activity.start_time || '',
+                    endTime: activity.endTime || activity.end_time || '',
+                    isSubActivity: false
+                  });
+                }
+                // Sub-activities counted separately
+                (activity.subActivities || []).forEach(sub => {
+                  if (overlaps(sub.startDate, sub.duration)) {
+                    allActivities.push({
+                      landscape: landscape.name,
+                      sid: sid.name,
+                      typeId: activity.type || activity.type_id,
+                      duration: parseInt(sub.duration) || 0,
+                      teamMemberId: sub.teamMemberId || sub.team_member_id || null,
+                      startDate: sub.startDate,
+                      startTime: sub.startTime || sub.start_time || '',
+                      endTime: sub.endTime || sub.end_time || '',
+                      isSubActivity: true,
+                      subName: sub.name || ''
+                    });
+                  }
+                });
+              });
+            });
+          });
+
+          // daysByType: Map<typeId, totalDays>
+          const daysByType = {};
+          allActivities.forEach(a => {
+            if (a.duration > 0) {
+              daysByType[a.typeId] = (daysByType[a.typeId] || 0) + a.duration;
+            }
+          });
+
+          // daysByMember: Map<memberId, Map<typeId, days>>
+          const daysByMember = {};
+          allActivities.forEach(a => {
+            if (a.teamMemberId && a.duration > 0) {
+              if (!daysByMember[a.teamMemberId]) daysByMember[a.teamMemberId] = {};
+              daysByMember[a.teamMemberId][a.typeId] = (daysByMember[a.teamMemberId][a.typeId] || 0) + a.duration;
+            }
+          });
+
+          const totalDays = Object.values(daysByType).reduce((s, d) => s + d, 0);
+          const activeMemberIds = Object.keys(daysByMember);
+          const activeMemberCount = activeMemberIds.length;
+
+          // Get display label for filter
+          const MONTH_LABELS = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+            'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+          const getFilterLabel = () => {
+            if (filterType === 'year') return `Jahr ${currentYear}`;
+            if (filterType === 'quarter') return `Q${filterValue} ${currentYear}`;
+            if (filterType === 'month') return `${MONTH_LABELS[(parseInt(filterValue) || 1) - 1]} ${currentYear}`;
+            return currentYear;
+          };
+
+          // ── CSV Export ──
+          const downloadCSV = () => {
+            const BOM = '\uFEFF';
+            const header = 'User;SID;Landscape;Aktivitätstyp;Startdatum;Dauer (Tage);Startzeit;Endzeit';
+            const rows = allActivities.map(a => {
+              const member = teamMembers.find(m => m.id === a.teamMemberId);
+              const memberName = member ? member.name : (a.teamMemberId ? `ID ${a.teamMemberId}` : 'Nicht zugewiesen');
+              const typeLabel = activityTypes.find(t => t.id === a.typeId)?.label || a.typeId;
+              return [
+                memberName, a.sid, a.landscape, typeLabel,
+                a.startDate, a.duration, a.startTime || '', a.endTime || ''
+              ].join(';');
+            });
+            const csv = BOM + header + '\n' + rows.join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `Auswertung_${getFilterLabel().replace(/\s+/g, '_')}.csv`;
+            link.click();
+            URL.revokeObjectURL(url);
+          };
+
+          // ── Print ──
+          const handlePrint = () => {
+            window.print();
+          };
+
+          // Build chart data (non-hook computations)
+          const typeEntries = activityTypes.filter(t => daysByType[t.id]);
+          const memberList = activeMemberIds.map(id => {
+            const m = teamMembers.find(tm => tm.id === parseInt(id));
+            return { id: parseInt(id), name: m ? m.name : `ID ${id}` };
+          });
+
+          // Imperative chart creation after render (avoids hooks in conditional IIFE)
+          requestAnimationFrame(() => {
+            if (typeof Chart === 'undefined') return;
+
+            // Destroy old charts
+            if (pieChartRef.current) { pieChartRef.current.destroy(); pieChartRef.current = null; }
+            if (barChartRef.current) { barChartRef.current.destroy(); barChartRef.current = null; }
+
+            // Pie chart
+            if (pieCanvasRef.current && typeEntries.length > 0) {
+              const ctx = pieCanvasRef.current.getContext('2d');
+              pieChartRef.current = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                  labels: typeEntries.map(t => t.label),
+                  datasets: [{
+                    data: typeEntries.map(t => daysByType[t.id]),
+                    backgroundColor: typeEntries.map(t => t.color),
+                    borderWidth: 2,
+                    borderColor: darkMode ? '#44475a' : '#fff'
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: true,
+                  plugins: {
+                    legend: {
+                      position: 'bottom',
+                      labels: { color: darkMode ? '#f8f8f2' : '#374151', padding: 12, font: { size: 12 } }
+                    },
+                    tooltip: {
+                      callbacks: {
+                        label: (tooltipCtx) => `${tooltipCtx.label}: ${tooltipCtx.parsed} Tage (${totalDays ? Math.round(tooltipCtx.parsed / totalDays * 100) : 0}%)`
+                      }
+                    }
+                  }
+                }
+              });
+            }
+
+            // Bar chart
+            if (barCanvasRef.current && memberList.length > 0) {
+              const ctx = barCanvasRef.current.getContext('2d');
+              barChartRef.current = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                  labels: memberList.map(m => m.name),
+                  datasets: activityTypes.filter(t => memberList.some(m => (daysByMember[m.id] || {})[t.id])).map(t => ({
+                    label: t.label,
+                    data: memberList.map(m => (daysByMember[m.id] || {})[t.id] || 0),
+                    backgroundColor: t.color,
+                    borderWidth: 1,
+                    borderColor: darkMode ? '#44475a' : '#fff'
+                  }))
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: true,
+                  scales: {
+                    x: {
+                      stacked: true,
+                      ticks: { color: darkMode ? '#f8f8f2' : '#374151' },
+                      grid: { color: darkMode ? '#6272a4' : '#e5e7eb' }
+                    },
+                    y: {
+                      stacked: true,
+                      beginAtZero: true,
+                      title: { display: true, text: 'Tage', color: darkMode ? '#f8f8f2' : '#374151' },
+                      ticks: { color: darkMode ? '#f8f8f2' : '#374151' },
+                      grid: { color: darkMode ? '#6272a4' : '#e5e7eb' }
+                    }
+                  },
+                  plugins: {
+                    legend: {
+                      position: 'bottom',
+                      labels: { color: darkMode ? '#f8f8f2' : '#374151', padding: 12, font: { size: 11 } }
+                    }
+                  }
+                }
+              });
+            }
+          });
+
+          return (
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto">
+              {/* Header */}
+              <div className="flex justify-between items-center mb-6 border-b pb-4 flex-wrap gap-3">
+                <h2 className="text-2xl font-bold text-gray-800">📈 Auswertung — {getFilterLabel()}</h2>
+                <div className="flex items-center gap-2 flex-wrap auswertung-controls">
+                  {/* Time filter selectors */}
+                  <select
+                    value={filterType}
+                    onChange={(e) => {
+                      const t = e.target.value;
+                      const v = t === 'year' ? currentYear : t === 'quarter' ? '1' : '1';
+                      setAuswertungFilter({ type: t, value: v });
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="year">Ganzes Jahr</option>
+                    <option value="quarter">Quartal</option>
+                    <option value="month">Monat</option>
+                  </select>
+
+                  {filterType === 'quarter' && (
+                    <select
+                      value={filterValue}
+                      onChange={(e) => setAuswertungFilter({ ...auswertungFilter, value: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    >
+                      <option value="1">Q1 (Jan–Mär)</option>
+                      <option value="2">Q2 (Apr–Jun)</option>
+                      <option value="3">Q3 (Jul–Sep)</option>
+                      <option value="4">Q4 (Okt–Dez)</option>
+                    </select>
+                  )}
+
+                  {filterType === 'month' && (
+                    <select
+                      value={filterValue}
+                      onChange={(e) => setAuswertungFilter({ ...auswertungFilter, value: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    >
+                      {MONTH_LABELS.map((label, i) => (
+                        <option key={i} value={String(i + 1)}>{label}</option>
+                      ))}
+                    </select>
+                  )}
+
+                  <button
+                    onClick={downloadCSV}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium flex items-center gap-1.5"
+                    title="CSV exportieren"
+                  >
+                    <DownloadIcon /> CSV
+                  </button>
+                  <button
+                    onClick={handlePrint}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium no-print"
+                    title="Drucken"
+                  >
+                    🖨️ Drucken
+                  </button>
+                </div>
+              </div>
+
+              {allActivities.length === 0 ? (
+                /* ── Empty State ── */
+                <div className="text-center py-16">
+                  <div className="text-6xl mb-4 opacity-30">📊</div>
+                  <p className="text-gray-500 text-lg">Keine Aktivitäten im gewählten Zeitraum</p>
+                  <p className="text-gray-400 text-sm mt-1">Wählen Sie einen anderen Zeitraum oder erstellen Sie Aktivitäten in der Gantt-Ansicht.</p>
+                </div>
+              ) : (
+                <>
+                  {/* ── Summary Cards ── */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 auswertung-section">
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
+                      <div className="text-sm text-blue-600 font-medium">Gesamte Arbeitstage</div>
+                      <div className="text-3xl font-bold text-blue-800 mt-1">{totalDays}</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
+                      <div className="text-sm text-purple-600 font-medium">Aktive Teammitglieder</div>
+                      <div className="text-3xl font-bold text-purple-800 mt-1">{activeMemberCount}</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-5 border border-emerald-200">
+                      <div className="text-sm text-emerald-600 font-medium">Aktivitätstypen genutzt</div>
+                      <div className="text-3xl font-bold text-emerald-800 mt-1">{typeEntries.length}</div>
+                    </div>
+                  </div>
+
+                  {/* ── Charts Row ── */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    {/* Pie Chart */}
+                    <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 auswertung-section">
+                      <h3 className="text-lg font-bold text-gray-700 mb-4">Verteilung nach Aktivitätstyp</h3>
+                      <div style={{ maxWidth: '360px', margin: '0 auto' }}>
+                        <canvas ref={pieCanvasRef}></canvas>
+                      </div>
+                    </div>
+
+                    {/* Bar Chart */}
+                    <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 auswertung-section">
+                      <h3 className="text-lg font-bold text-gray-700 mb-4">Arbeitstage pro Teammitglied</h3>
+                      {memberList.length > 0 ? (
+                        <canvas ref={barCanvasRef}></canvas>
+                      ) : (
+                        <div className="text-center py-8 text-gray-400">
+                          <div className="text-4xl mb-2 opacity-30">👤</div>
+                          <p>Keine Teammitglieder zugewiesen</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ── Matrix Table: Members vs Types ── */}
+                  <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 auswertung-section">
+                    <h3 className="text-lg font-bold text-gray-700 mb-4">Teammitglieder × Aktivitätstypen (Tage)</h3>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr>
+                            <th className="text-left px-3 py-2 bg-gray-200 border border-gray-300 font-semibold">Teammitglied</th>
+                            {activityTypes.filter(t => daysByType[t.id]).map(t => (
+                              <th key={t.id} className="text-center px-3 py-2 bg-gray-200 border border-gray-300 font-semibold" style={{ minWidth: '80px' }}>
+                                <div className="flex items-center justify-center gap-1">
+                                  <span className="w-3 h-3 rounded" style={{ backgroundColor: t.color, display: 'inline-block' }}></span>
+                                  {t.label}
+                                </div>
+                              </th>
+                            ))}
+                            <th className="text-center px-3 py-2 bg-gray-200 border border-gray-300 font-bold">Gesamt</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {memberList.map((member, idx) => {
+                            const memberData = daysByMember[member.id] || {};
+                            const memberTotal = Object.values(memberData).reduce((s, d) => s + d, 0);
+                            const maxDays = Math.max(...Object.values(daysByMember).map(m => Object.values(m).reduce((s, d) => s + d, 0)), 1);
+                            return (
+                              <tr key={member.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className="px-3 py-2 border border-gray-300 font-medium">{member.name}</td>
+                                {activityTypes.filter(t => daysByType[t.id]).map(t => {
+                                  const val = memberData[t.id] || 0;
+                                  const intensity = val > 0 ? Math.max(0.1, val / Math.max(...Object.values(daysByType), 1)) : 0;
+                                  return (
+                                    <td
+                                      key={t.id}
+                                      className="text-center px-3 py-2 border border-gray-300 font-mono"
+                                      style={val > 0 ? { backgroundColor: `${t.color}${Math.round(intensity * 40 + 15).toString(16).padStart(2, '0')}` } : {}}
+                                    >
+                                      {val > 0 ? val : '–'}
+                                    </td>
+                                  );
+                                })}
+                                <td className="text-center px-3 py-2 border border-gray-300 font-bold">{memberTotal}</td>
+                              </tr>
+                            );
+                          })}
+                          {/* Totals row */}
+                          <tr className="bg-gray-100 font-bold">
+                            <td className="px-3 py-2 border border-gray-300">Gesamt</td>
+                            {activityTypes.filter(t => daysByType[t.id]).map(t => (
+                              <td key={t.id} className="text-center px-3 py-2 border border-gray-300">{daysByType[t.id]}</td>
+                            ))}
+                            <td className="text-center px-3 py-2 border border-gray-300">{totalDays}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           );

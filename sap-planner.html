@@ -17,6 +17,7 @@
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin
     src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/styles.css">
   <style>
     /* ===== Original Styles ===== */
@@ -629,6 +630,58 @@
     .matrix-scroll-clip {
       overflow-x: auto;
       overflow-y: hidden;
+    }
+
+    /* ===== Print Styles ===== */
+    @media print {
+      /* Hide all UI chrome */
+      .app-header,
+      .dark-toggle,
+      .auswertung-controls button,
+      .no-print {
+        display: none !important;
+      }
+
+      /* Force white backgrounds for paper */
+      body,
+      .dark-mode body,
+      .bg-white,
+      .dark-mode .bg-white,
+      .bg-gray-50,
+      .dark-mode .bg-gray-50,
+      .bg-gray-100,
+      .dark-mode .bg-gray-100 {
+        background: #fff !important;
+        color: #000 !important;
+      }
+
+      .dark-mode * {
+        color: #000 !important;
+        border-color: #ccc !important;
+      }
+
+      .dark-mode th {
+        background-color: #f3f4f6 !important;
+        color: #000 !important;
+      }
+
+      /* Ensure Chart.js canvases render at full width */
+      canvas {
+        width: 100% !important;
+        height: auto !important;
+        max-height: 400px;
+      }
+
+      /* Remove shadows and rounded corners for clean print */
+      .shadow-lg,
+      .shadow-xl {
+        box-shadow: none !important;
+      }
+
+      /* Page break control */
+      .auswertung-section {
+        page-break-inside: avoid;
+      }
     }
   </style>
 </head>
