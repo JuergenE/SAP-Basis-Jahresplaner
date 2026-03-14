@@ -229,14 +229,42 @@ const initDatabase = () => {
     CREATE INDEX IF NOT EXISTS idx_subactivities_activity ON sub_activities(activity_id);
     CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
 
-    -- Landscape Locks (Multi-User concurrency)
-    CREATE TABLE IF NOT EXISTS landscape_locks (
-      landscape_id INTEGER PRIMARY KEY REFERENCES landscapes(id) ON DELETE CASCADE,
+    -- SID Locks (Multi-User concurrency) Replacing old landscape_locks
+    CREATE TABLE IF NOT EXISTS sid_locks (
+      sid_id INTEGER PRIMARY KEY REFERENCES sids(id) ON DELETE CASCADE,
       user_id INTEGER REFERENCES users(id),
       username TEXT,
+      abbreviation TEXT,
       expires_at DATETIME NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_landscape_locks_expires ON landscape_locks(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_sid_locks_expires ON sid_locks(expires_at);
+
+    -- Activity Series (recurring activity groups)
+    CREATE TABLE IF NOT EXISTS activity_series (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sid_id INTEGER REFERENCES sids(id) ON DELETE CASCADE,
+      type_id TEXT REFERENCES activity_types(id),
+      rule_type TEXT CHECK(rule_type IN ('every_x_weeks', 'x_per_year', 'manual')) DEFAULT 'manual',
+      rule_value INTEGER DEFAULT 0,
+      rule_start_date TEXT,
+      default_start_time TEXT DEFAULT '',
+      default_end_time TEXT DEFAULT '',
+      team_member_id INTEGER REFERENCES team_members(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_activity_series_sid ON activity_series(sid_id);
+
+    -- Series Occurrences (individual dates within a series)
+    CREATE TABLE IF NOT EXISTS series_occurrences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      series_id INTEGER REFERENCES activity_series(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      start_time TEXT DEFAULT '',
+      end_time TEXT DEFAULT '',
+      includes_weekend BOOLEAN DEFAULT FALSE,
+      team_member_id INTEGER REFERENCES team_members(id) ON DELETE SET NULL,
+      sort_order INTEGER DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_series_occurrences_series ON series_occurrences(series_id);
 
     -- Matrix Columns (Qualifikationen)
     CREATE TABLE IF NOT EXISTS matrix_columns (
@@ -268,6 +296,12 @@ const initDatabase = () => {
       booked_date INTEGER DEFAULT 0
     );
   `);
+
+  // Migration: Drop old landscape_locks table
+  try {
+    db.exec(`DROP TABLE IF EXISTS landscape_locks`);
+    console.log('✓ Dropped deprecated landscape_locks table');
+  } catch (e) { }
 
   // Migration: Update users table to allow 'teamlead' role
   try {
@@ -491,6 +525,12 @@ const initDatabase = () => {
   try {
     db.exec(`ALTER TABLE trainings ADD COLUMN booked_date INTEGER DEFAULT 0`);
     console.log('✓ Added booked_date to trainings');
+  } catch (e) { }
+
+  // Migration: Add abbreviation column to sid_locks
+  try {
+    db.exec(`ALTER TABLE sid_locks ADD COLUMN abbreviation TEXT DEFAULT ''`);
+    console.log('✓ Added abbreviation to sid_locks');
   } catch (e) { }
 
   // Migration: Create user_sid_visibility table for per-user Gantt visibility
@@ -734,13 +774,14 @@ app.get('/api/health', (req, res) => {
 // Online Users Tracking
 app.post('/api/users/ping', authenticate, (req, res) => {
   const username = req.user.username;
+  const { activeSidId } = req.body || {};
 
+  // Use user's abbreviation from users table (3-char Kürzel)
   let abbreviation = username.substring(0, 2).toUpperCase();
   try {
-    // Try to locate a matching team member abbreviation
-    const member = db.prepare('SELECT abbreviation FROM team_members WHERE LOWER(name) = LOWER(?) OR LOWER(abbreviation) = LOWER(?)').get(username, username);
-    if (member && member.abbreviation) {
-      abbreviation = member.abbreviation;
+    const userRecord = db.prepare('SELECT abbreviation FROM users WHERE id = ?').get(req.user.id);
+    if (userRecord && userRecord.abbreviation) {
+      abbreviation = userRecord.abbreviation;
     }
   } catch (err) {
     // Fallback to substring if DB fails
@@ -750,6 +791,7 @@ app.post('/api/users/ping', authenticate, (req, res) => {
     id: req.user.id,
     username: username,
     abbreviation: abbreviation,
+    activeSidId: activeSidId || null,
     lastSeen: Date.now()
   });
 
@@ -764,7 +806,12 @@ app.get('/api/users/online', authenticate, (req, res) => {
     if (now - data.lastSeen > 60000) { // 60 seconds timeout
       activeUsers.delete(userId);
     } else {
-      activeList.push({ id: data.id, abbreviation: data.abbreviation, username: data.username });
+      activeList.push({ 
+        id: data.id, 
+        abbreviation: data.abbreviation, 
+        username: data.username,
+        activeSidId: data.activeSidId 
+      });
     }
   }
 
@@ -920,49 +967,74 @@ app.delete('/api/activity-types/:id', authenticate, requireAdmin, (req, res) => 
 });
 
 // =========================================================================
-// LANDSCAPES ROUTES
+// SIDS / LOCKING ROUTES
 // =========================================================================
 
 const cleanupLocks = () => {
-  db.prepare('DELETE FROM landscape_locks WHERE expires_at < CURRENT_TIMESTAMP').run();
+  db.prepare('DELETE FROM sid_locks WHERE expires_at < CURRENT_TIMESTAMP').run();
 };
 
-app.get('/api/landscapes/locks', authenticate, (req, res) => {
+app.get('/api/sids/locks', authenticate, (req, res) => {
   cleanupLocks();
-  const locks = db.prepare('SELECT * FROM landscape_locks').all();
+  const locks = db.prepare('SELECT * FROM sid_locks').all();
   res.json(locks);
 });
 
-app.post('/api/landscapes/:id/lock', authenticate, (req, res) => {
+app.post('/api/sids/:id/lock', authenticate, (req, res) => {
   const { id } = req.params;
   cleanupLocks();
 
-  const existingLock = db.prepare('SELECT * FROM landscape_locks WHERE landscape_id = ?').get(id);
+  // Look up user's 3-char abbreviation from users table
+  let abbreviation = req.user.username.substring(0, 2).toUpperCase();
+  try {
+    const userRecord = db.prepare('SELECT abbreviation FROM users WHERE id = ?').get(req.user.id);
+    if (userRecord && userRecord.abbreviation) abbreviation = userRecord.abbreviation;
+  } catch (e) {}
+
+  const existingLock = db.prepare('SELECT * FROM sid_locks WHERE sid_id = ?').get(id);
 
   if (existingLock) {
     if (existingLock.user_id !== req.user.id) {
-      return res.status(409).json({ error: `Landschaft ist bereits gesperrt durch ${existingLock.username}` });
+      return res.status(409).json({ error: `SID ist bereits gesperrt durch ${existingLock.username}` });
     }
-    // Renew lock
-    db.prepare("UPDATE landscape_locks SET expires_at = datetime('now', '+5 minutes') WHERE landscape_id = ?").run(id);
+    // Renew lock on same SID
+    db.prepare("UPDATE sid_locks SET expires_at = datetime('now', '+5 minutes'), abbreviation = ? WHERE sid_id = ?").run(abbreviation, id);
   } else {
+    // Release ALL other locks held by this user first (single-lock-per-user enforcement)
+    db.prepare('DELETE FROM sid_locks WHERE user_id = ?').run(req.user.id);
     // Acquire new lock
-    db.prepare("INSERT INTO landscape_locks (landscape_id, user_id, username, expires_at) VALUES (?, ?, ?, datetime('now', '+5 minutes'))")
-      .run(id, req.user.id, req.user.username);
+    db.prepare("INSERT INTO sid_locks (sid_id, user_id, username, abbreviation, expires_at) VALUES (?, ?, ?, ?, datetime('now', '+5 minutes'))")
+      .run(id, req.user.id, req.user.username, abbreviation);
   }
 
-  res.json({ success: true, expires_at: db.prepare('SELECT expires_at FROM landscape_locks WHERE landscape_id = ?').get(id).expires_at });
+  res.json({ success: true, expires_at: db.prepare('SELECT expires_at FROM sid_locks WHERE sid_id = ?').get(id).expires_at });
 });
 
-app.delete('/api/landscapes/:id/lock', authenticate, (req, res) => {
+app.delete('/api/sids/:id/lock', authenticate, (req, res) => {
   const { id } = req.params;
-  db.prepare('DELETE FROM landscape_locks WHERE landscape_id = ? AND user_id = ?').run(id, req.user.id);
+  db.prepare('DELETE FROM sid_locks WHERE sid_id = ? AND user_id = ?').run(id, req.user.id);
   res.json({ success: true });
 });
+
+// =========================================================================
+// LANDSCAPES ROUTES
+// =========================================================================
 
 app.get('/api/landscapes', authenticate, (req, res) => {
   cleanupLocks();
   const landscapes = db.prepare('SELECT * FROM landscapes ORDER BY sort_order').all();
+  
+  // Pre-fetch all SID locks mapped by sid_id
+  const allSidLocks = db.prepare('SELECT sid_id, user_id, username, abbreviation, expires_at FROM sid_locks').all();
+  const sidLocksMap = {};
+  allSidLocks.forEach(lock => {
+    sidLocksMap[lock.sid_id] = {
+      user_id: lock.user_id,
+      username: lock.username,
+      abbreviation: lock.abbreviation || lock.username.substring(0, 2).toUpperCase(),
+      expires_at: lock.expires_at
+    };
+  });
 
   // Get SIDs and activities for each landscape
   const result = landscapes.map(landscape => {
@@ -979,6 +1051,7 @@ app.get('/api/landscapes', authenticate, (req, res) => {
         ...sid,
         isPRD: !!sid.is_prd,
         visibleInGantt,
+        lock: sidLocksMap[sid.id] || null,
         activities: activities.map(a => {
           // Get sub-activities for this activity
           const subActivities = db.prepare('SELECT * FROM sub_activities WHERE activity_id = ? ORDER BY sort_order').all(a.id);
@@ -1004,15 +1077,33 @@ app.get('/api/landscapes', authenticate, (req, res) => {
               end_time: sa.end_time || null
             }))
           };
-        })
+        }),
+        series: (() => {
+          const seriesList = db.prepare('SELECT * FROM activity_series WHERE sid_id = ?').all(sid.id);
+          return seriesList.map(s => {
+            const occurrences = db.prepare('SELECT * FROM series_occurrences WHERE series_id = ? ORDER BY date, sort_order').all(s.id);
+            return {
+              ...s,
+              typeId: s.type_id,
+              ruleType: s.rule_type,
+              ruleValue: s.rule_value,
+              ruleStartDate: s.rule_start_date,
+              defaultStartTime: s.default_start_time,
+              defaultEndTime: s.default_end_time,
+              teamMemberId: s.team_member_id,
+              occurrences: occurrences.map(o => ({
+                ...o,
+                includesWeekend: !!o.includes_weekend,
+                teamMemberId: o.team_member_id
+              }))
+            };
+          });
+        })()
       };
     });
 
-    const lock = db.prepare('SELECT user_id, username, expires_at FROM landscape_locks WHERE landscape_id = ?').get(landscape.id);
-
     return {
       ...landscape,
-      lock: lock || null,
       sids: sidsWithActivities
     };
   });
@@ -1367,6 +1458,260 @@ app.delete('/api/activities/:id', authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
   db.prepare('DELETE FROM activities WHERE id = ?').run(id);
   res.json({ success: true });
+});
+
+// =========================================================================
+// ACTIVITY SERIES ROUTES
+// =========================================================================
+
+// Helper: generate occurrence dates based on rule
+function generateOccurrenceDates(ruleType, ruleValue, startDate, year) {
+  const dates = [];
+  const start = new Date(startDate);
+  // 14-month window: Dec of previous year through Jan of next year
+  const windowStart = new Date(year - 1, 11, 1); // Dec 1 of prev year
+  const windowEnd = new Date(year + 1, 1, 31);   // Jan 31 of next year
+
+  if (ruleType === 'every_x_weeks' && ruleValue > 0) {
+    let current = new Date(start);
+    while (current <= windowEnd) {
+      if (current >= windowStart) {
+        dates.push(current.toISOString().split('T')[0]);
+      }
+      current.setDate(current.getDate() + ruleValue * 7);
+    }
+  } else if (ruleType === 'x_per_year' && ruleValue > 0) {
+    // Distribute X dates evenly across the year
+    const intervalDays = Math.floor(365 / ruleValue);
+    let current = new Date(start);
+    for (let i = 0; i < ruleValue; i++) {
+      if (current >= windowStart && current <= windowEnd) {
+        dates.push(current.toISOString().split('T')[0]);
+      }
+      current.setDate(current.getDate() + intervalDays);
+    }
+  }
+  return dates;
+}
+
+// Create a new series
+app.post('/api/series', authenticate, requireAdmin, (req, res) => {
+  try {
+    const { sid_id, type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id, year } = req.body;
+
+    if (!sid_id || !type_id) {
+      return res.status(400).json({ error: 'sid_id und type_id erforderlich' });
+    }
+
+    const result = db.prepare(
+      'INSERT INTO activity_series (sid_id, type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(sid_id, type_id, rule_type || 'manual', rule_value || 0, rule_start_date || '', default_start_time || '', default_end_time || '', team_member_id || null);
+
+    const seriesId = result.lastInsertRowid;
+
+    // Auto-generate occurrences if rule is not manual
+    if (rule_type && rule_type !== 'manual' && rule_start_date) {
+      const planYear = year || new Date().getFullYear();
+      const dates = generateOccurrenceDates(rule_type, rule_value, rule_start_date, planYear);
+      const insertOcc = db.prepare('INSERT INTO series_occurrences (series_id, date, start_time, end_time, team_member_id, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+      dates.forEach((date, idx) => {
+        insertOcc.run(seriesId, date, default_start_time || '', default_end_time || '', team_member_id || null, idx + 1);
+      });
+    }
+
+    // Return the full series with occurrences
+    const series = db.prepare('SELECT * FROM activity_series WHERE id = ?').get(seriesId);
+    const occurrences = db.prepare('SELECT * FROM series_occurrences WHERE series_id = ? ORDER BY date, sort_order').all(seriesId);
+
+    logAction(req.user.id, req.user.username, 'SERIES_CREATE', { seriesId, type_id, sid_id, occurrences: occurrences.length });
+
+    res.json({
+      ...series,
+      typeId: series.type_id, ruleType: series.rule_type, ruleValue: series.rule_value,
+      ruleStartDate: series.rule_start_date, defaultStartTime: series.default_start_time,
+      defaultEndTime: series.default_end_time, teamMemberId: series.team_member_id,
+      occurrences: occurrences.map(o => ({ ...o, includesWeekend: !!o.includes_weekend, teamMemberId: o.team_member_id }))
+    });
+  } catch (error) {
+    console.error('Create series error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get series for a SID
+app.get('/api/sids/:id/series', authenticate, (req, res) => {
+  const seriesList = db.prepare('SELECT * FROM activity_series WHERE sid_id = ?').all(req.params.id);
+  const result = seriesList.map(s => {
+    const occurrences = db.prepare('SELECT * FROM series_occurrences WHERE series_id = ? ORDER BY date, sort_order').all(s.id);
+    return {
+      ...s, typeId: s.type_id, ruleType: s.rule_type, ruleValue: s.rule_value,
+      ruleStartDate: s.rule_start_date, defaultStartTime: s.default_start_time,
+      defaultEndTime: s.default_end_time, teamMemberId: s.team_member_id,
+      occurrences: occurrences.map(o => ({ ...o, includesWeekend: !!o.includes_weekend, teamMemberId: o.team_member_id }))
+    };
+  });
+  res.json(result);
+});
+
+// Update series metadata
+app.put('/api/series/:id', authenticate, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id } = req.body;
+    const updates = [];
+    const values = [];
+
+    if (type_id !== undefined) { updates.push('type_id = ?'); values.push(type_id); }
+    if (rule_type !== undefined) { updates.push('rule_type = ?'); values.push(rule_type); }
+    if (rule_value !== undefined) { updates.push('rule_value = ?'); values.push(rule_value); }
+    if (rule_start_date !== undefined) { updates.push('rule_start_date = ?'); values.push(rule_start_date); }
+    if (default_start_time !== undefined) { updates.push('default_start_time = ?'); values.push(default_start_time); }
+    if (default_end_time !== undefined) { updates.push('default_end_time = ?'); values.push(default_end_time); }
+    if (team_member_id !== undefined) { updates.push('team_member_id = ?'); values.push(team_member_id || null); }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'Keine Änderungen' });
+
+    values.push(id);
+    db.prepare(`UPDATE activity_series SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+    logAction(req.user.id, req.user.username, 'SERIES_UPDATE', { seriesId: id });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete series + all occurrences
+app.delete('/api/series/:id', authenticate, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  db.prepare('DELETE FROM activity_series WHERE id = ?').run(id); // CASCADE deletes occurrences
+  logAction(req.user.id, req.user.username, 'SERIES_DELETE', { seriesId: id });
+  res.json({ success: true });
+});
+
+// Add one occurrence
+app.post('/api/series/:id/occurrences', authenticate, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { date, start_time, end_time, includes_weekend, team_member_id } = req.body;
+
+    if (!date) return res.status(400).json({ error: 'Datum erforderlich' });
+
+    const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM series_occurrences WHERE series_id = ?').get(id);
+    const sortOrder = (maxOrder?.max || 0) + 1;
+
+    const result = db.prepare(
+      'INSERT INTO series_occurrences (series_id, date, start_time, end_time, includes_weekend, team_member_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(id, date, start_time || '', end_time || '', includes_weekend ? 1 : 0, team_member_id || null, sortOrder);
+
+    res.json({ id: result.lastInsertRowid, series_id: parseInt(id), date, start_time: start_time || '', end_time: end_time || '', includes_weekend: !!includes_weekend, teamMemberId: team_member_id || null, sort_order: sortOrder });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update one occurrence
+app.put('/api/series/:id/occurrences/:occId', authenticate, requireAdmin, (req, res) => {
+  try {
+    const { occId } = req.params;
+    const { date, start_time, end_time, includes_weekend, team_member_id } = req.body;
+    const updates = [];
+    const values = [];
+
+    if (date !== undefined) { updates.push('date = ?'); values.push(date); }
+    if (start_time !== undefined) { updates.push('start_time = ?'); values.push(start_time); }
+    if (end_time !== undefined) { updates.push('end_time = ?'); values.push(end_time); }
+    if (includes_weekend !== undefined) { updates.push('includes_weekend = ?'); values.push(includes_weekend ? 1 : 0); }
+    if (team_member_id !== undefined) { updates.push('team_member_id = ?'); values.push(team_member_id || null); }
+
+    if (updates.length === 0) return res.status(400).json({ error: 'Keine Änderungen' });
+
+    values.push(occId);
+    db.prepare(`UPDATE series_occurrences SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete one occurrence
+app.delete('/api/series/:id/occurrences/:occId', authenticate, requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM series_occurrences WHERE id = ?').run(req.params.occId);
+  res.json({ success: true });
+});
+
+// Re-generate occurrences from rule
+app.post('/api/series/:id/generate', authenticate, requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { year } = req.body;
+    const series = db.prepare('SELECT * FROM activity_series WHERE id = ?').get(id);
+    if (!series) return res.status(404).json({ error: 'Serie nicht gefunden' });
+
+    if (series.rule_type === 'manual') {
+      return res.status(400).json({ error: 'Manuelle Serien können nicht automatisch generiert werden' });
+    }
+
+    // Delete existing occurrences
+    db.prepare('DELETE FROM series_occurrences WHERE series_id = ?').run(id);
+
+    // Generate new ones
+    const planYear = year || new Date().getFullYear();
+    const dates = generateOccurrenceDates(series.rule_type, series.rule_value, series.rule_start_date, planYear);
+    const insertOcc = db.prepare('INSERT INTO series_occurrences (series_id, date, start_time, end_time, team_member_id, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
+    dates.forEach((date, idx) => {
+      insertOcc.run(id, date, series.default_start_time || '', series.default_end_time || '', series.team_member_id || null, idx + 1);
+    });
+
+    const occurrences = db.prepare('SELECT * FROM series_occurrences WHERE series_id = ? ORDER BY date, sort_order').all(id);
+    logAction(req.user.id, req.user.username, 'SERIES_REGENERATE', { seriesId: id, count: occurrences.length });
+
+    res.json({ success: true, occurrences: occurrences.map(o => ({ ...o, includesWeekend: !!o.includes_weekend, teamMemberId: o.team_member_id })) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Convert existing activity → series
+app.post('/api/series/convert', authenticate, requireAdmin, (req, res) => {
+  try {
+    const { activity_id, sid_id } = req.body;
+    if (!activity_id || !sid_id) return res.status(400).json({ error: 'activity_id und sid_id erforderlich' });
+
+    const activity = db.prepare('SELECT * FROM activities WHERE id = ?').get(activity_id);
+    if (!activity) return res.status(404).json({ error: 'Aktivität nicht gefunden' });
+
+    // Create series from the activity
+    const result = db.prepare(
+      'INSERT INTO activity_series (sid_id, type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(sid_id, activity.type_id, 'manual', 0, activity.start_date, activity.start_time || '', activity.end_time || '', activity.team_member_id || null);
+
+    const seriesId = result.lastInsertRowid;
+
+    // Create first occurrence from the activity
+    db.prepare(
+      'INSERT INTO series_occurrences (series_id, date, start_time, end_time, includes_weekend, team_member_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(seriesId, activity.start_date, activity.start_time || '', activity.end_time || '', activity.includes_weekend ? 1 : 0, activity.team_member_id || null, 1);
+
+    // Delete the original activity
+    db.prepare('DELETE FROM activities WHERE id = ?').run(activity_id);
+
+    // Return the new series
+    const series = db.prepare('SELECT * FROM activity_series WHERE id = ?').get(seriesId);
+    const occurrences = db.prepare('SELECT * FROM series_occurrences WHERE series_id = ? ORDER BY date').all(seriesId);
+
+    logAction(req.user.id, req.user.username, 'SERIES_CONVERT', { activityId: activity_id, seriesId });
+
+    res.json({
+      ...series,
+      typeId: series.type_id, ruleType: series.rule_type, ruleValue: series.rule_value,
+      ruleStartDate: series.rule_start_date, defaultStartTime: series.default_start_time,
+      defaultEndTime: series.default_end_time, teamMemberId: series.team_member_id,
+      occurrences: occurrences.map(o => ({ ...o, includesWeekend: !!o.includes_weekend, teamMemberId: o.team_member_id }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // =========================================================================

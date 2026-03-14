@@ -111,9 +111,10 @@ class ApiClient {
   async updateLandscape(id, data) { return this.request(`/api/landscapes/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async deleteLandscape(id) { return this.request(`/api/landscapes/${id}`, { method: 'DELETE' }); }
 
-  // Landscape Locking
-  async acquireLock(id) { return this.request(`/api/landscapes/${id}/lock`, { method: 'POST' }); }
-  async releaseLock(id) { return this.request(`/api/landscapes/${id}/lock`, { method: 'DELETE' }); }
+  // SID Locking
+  async acquireLock(id) { return this.request(`/api/sids/${id}/lock`, { method: 'POST' }); }
+  async releaseLock(id) { return this.request(`/api/sids/${id}/lock`, { method: 'DELETE' }); }
+  async getLocks() { return this.request('/api/sids/locks'); }
 
   // SIDs
   async createSid(landscape_id, name, is_prd, visible_in_gantt) { return this.request('/api/sids', { method: 'POST', body: JSON.stringify({ landscape_id, name, is_prd, visible_in_gantt }) }); }
@@ -135,6 +136,16 @@ class ApiClient {
   async createSubActivity(data) { return this.request('/api/sub-activities', { method: 'POST', body: JSON.stringify(data) }); }
   async updateSubActivity(id, data) { return this.request(`/api/sub-activities/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async deleteSubActivity(id) { return this.request(`/api/sub-activities/${id}`, { method: 'DELETE' }); }
+
+  // Activity Series
+  async createSeries(data) { return this.request('/api/series', { method: 'POST', body: JSON.stringify(data) }); }
+  async updateSeries(id, data) { return this.request(`/api/series/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteSeries(id) { return this.request(`/api/series/${id}`, { method: 'DELETE' }); }
+  async createOccurrence(seriesId, data) { return this.request(`/api/series/${seriesId}/occurrences`, { method: 'POST', body: JSON.stringify(data) }); }
+  async updateOccurrence(seriesId, occId, data) { return this.request(`/api/series/${seriesId}/occurrences/${occId}`, { method: 'PUT', body: JSON.stringify(data) }); }
+  async deleteOccurrence(seriesId, occId) { return this.request(`/api/series/${seriesId}/occurrences/${occId}`, { method: 'DELETE' }); }
+  async regenerateSeries(id, year) { return this.request(`/api/series/${id}/generate`, { method: 'POST', body: JSON.stringify({ year }) }); }
+  async convertToSeries(activity_id, sid_id) { return this.request('/api/series/convert', { method: 'POST', body: JSON.stringify({ activity_id, sid_id }) }); }
 
   // Team Members
   async getTeamMembers() { return this.request('/api/team-members'); }
@@ -688,6 +699,174 @@ const UploadIcon = () => (
 );
 
 // =========================================================================
+// SERIES POPUP EDITOR COMPONENT
+// =========================================================================
+const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, api, onClose }) => {
+  const seriesType = activityTypes.find(t => t.id === series.typeId);
+  const [localRule, setLocalRule] = useState({ type: series.ruleType || 'manual', value: series.ruleValue || 0, startDate: series.ruleStartDate || '' });
+  const [localOccs, setLocalOccs] = useState(series.occurrences || []);
+  const [localDefaults, setLocalDefaults] = useState({ startTime: series.defaultStartTime || '', endTime: series.defaultEndTime || '', teamMemberId: series.teamMemberId || '' });
+  const [saving, setSaving] = useState(false);
+
+  const handleGenerate = async () => {
+    if (!localRule.startDate) { alert('Bitte Startdatum angeben'); return; }
+    if (localOccs.length > 0 && !confirm('Alle bestehenden Termine werden ersetzt. Fortfahren?')) return;
+    try {
+      await api.updateSeries(series.id, { rule_type: localRule.type, rule_value: localRule.value, rule_start_date: localRule.startDate, default_start_time: localDefaults.startTime, default_end_time: localDefaults.endTime, team_member_id: localDefaults.teamMemberId || null });
+      const result = await api.regenerateSeries(series.id, year);
+      setLocalOccs(result.occurrences || []);
+    } catch (e) { alert('Fehler: ' + e.message); }
+  };
+
+  const handleAddOcc = async () => {
+    try {
+      const newOcc = await api.createOccurrence(series.id, { date: new Date().toISOString().split('T')[0], start_time: localDefaults.startTime, end_time: localDefaults.endTime, team_member_id: localDefaults.teamMemberId || null });
+      setLocalOccs(prev => [...prev, newOcc]);
+    } catch (e) { alert('Fehler: ' + e.message); }
+  };
+
+  const handleUpdateOcc = async (occId, field, value) => {
+    try {
+      const data = {};
+      if (field === 'date') data.date = value;
+      else if (field === 'start_time') data.start_time = value;
+      else if (field === 'end_time') data.end_time = value;
+      else if (field === 'includes_weekend') data.includes_weekend = value;
+      else if (field === 'team_member_id') data.team_member_id = value || null;
+      await api.updateOccurrence(series.id, occId, data);
+      setLocalOccs(prev => prev.map(o => o.id === occId ? { ...o, ...data, includesWeekend: data.includes_weekend !== undefined ? data.includes_weekend : o.includesWeekend, teamMemberId: data.team_member_id !== undefined ? data.team_member_id : o.teamMemberId } : o));
+    } catch (e) { alert('Fehler: ' + e.message); }
+  };
+
+  const handleDeleteOcc = async (occId) => {
+    try {
+      await api.deleteOccurrence(series.id, occId);
+      setLocalOccs(prev => prev.filter(o => o.id !== occId));
+    } catch (e) { alert('Fehler: ' + e.message); }
+  };
+
+  const handleClose = async () => {
+    setSaving(true);
+    try {
+      await api.updateSeries(series.id, { rule_type: localRule.type, rule_value: localRule.value, rule_start_date: localRule.startDate, default_start_time: localDefaults.startTime, default_end_time: localDefaults.endTime, team_member_id: localDefaults.teamMemberId || null });
+    } catch (e) { console.error(e); }
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 pb-48 w-full max-w-3xl mx-4 max-h-[85vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-4 h-4 rounded-full" style={{ backgroundColor: seriesType?.color }} />
+            <h2 className="text-xl font-bold dark:text-gray-100">{seriesType?.label || series.typeId} – Serie ({localOccs.length} Termine)</h2>
+          </div>
+          <button onClick={handleClose} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-2xl">×</button>
+        </div>
+
+        {/* Rule Configuration */}
+        <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 mb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Regel:</span>
+            <select value={localRule.type} onChange={e => setLocalRule(prev => ({ ...prev, type: e.target.value }))} className="px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm">
+              <option value="manual">Manuell</option>
+              <option value="every_x_weeks">Alle X Wochen</option>
+              <option value="x_per_year">X mal pro Jahr</option>
+            </select>
+            {localRule.type !== 'manual' && (
+              <>
+                <input type="number" min="1" max="52" value={localRule.value} onChange={e => setLocalRule(prev => ({ ...prev, value: parseInt(e.target.value) || 0 }))} className="w-16 px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" />
+                <span className="text-sm text-gray-600 dark:text-gray-400">ab</span>
+                <input type="date" value={localRule.startDate} onChange={e => setLocalRule(prev => ({ ...prev, startDate: e.target.value }))} className="px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" />
+                <button onClick={handleGenerate} className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 font-medium">
+                  🔄 Generieren
+                </button>
+              </>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-3 mt-3">
+            <span className="text-sm text-gray-600 dark:text-gray-400">Standard Von:</span>
+            <TimePicker value={localDefaults.startTime} onChange={v => setLocalDefaults(prev => ({ ...prev, startTime: v }))} />
+            <span className="text-sm text-gray-600 dark:text-gray-400">Bis:</span>
+            <TimePicker value={localDefaults.endTime} onChange={v => setLocalDefaults(prev => ({ ...prev, endTime: v }))} />
+            <span className="text-sm text-gray-600 dark:text-gray-400">👤</span>
+            <select value={localDefaults.teamMemberId} onChange={e => setLocalDefaults(prev => ({ ...prev, teamMemberId: e.target.value }))} className="px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm">
+              <option value="">-</option>
+              {teamMembers.map(m => <option key={m.id} value={m.id}>{m.abbreviation}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Occurrences Table */}
+        {localOccs.length > 0 ? (
+          <div>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-300 dark:border-slate-600 text-left dark:text-gray-300">
+                  <th className="py-2 px-1 w-8">Nr.</th>
+                  <th className="py-2 px-1">Datum</th>
+                  <th className="py-2 px-1">Von</th>
+                  <th className="py-2 px-1">Bis</th>
+                  <th className="py-2 px-1 w-10">WE</th>
+                  <th className="py-2 px-1">👤</th>
+                  <th className="py-2 px-1 w-8"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {localOccs.map((occ, idx) => (
+                  <tr key={occ.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                    <td className="py-1 px-1 text-gray-500 dark:text-gray-400">{idx + 1}</td>
+                    <td className="py-1 px-1">
+                      <input type="date" value={occ.date} onChange={e => handleUpdateOcc(occ.id, 'date', e.target.value)} className="px-1 py-0.5 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" disabled={!canEdit} />
+                    </td>
+                    <td className="py-1 px-1">
+                      <TimePicker value={occ.start_time || ''} onChange={v => handleUpdateOcc(occ.id, 'start_time', v)} disabled={!canEdit} />
+                    </td>
+                    <td className="py-1 px-1">
+                      <TimePicker value={occ.end_time || ''} onChange={v => handleUpdateOcc(occ.id, 'end_time', v)} disabled={!canEdit} />
+                    </td>
+                    <td className="py-1 px-1 text-center">
+                      <input type="checkbox" checked={!!occ.includesWeekend} onChange={e => handleUpdateOcc(occ.id, 'includes_weekend', e.target.checked)} disabled={!canEdit} className="w-4 h-4 rounded border-gray-300" />
+                    </td>
+                    <td className="py-1 px-1">
+                      <select value={occ.teamMemberId || occ.team_member_id || ''} onChange={e => handleUpdateOcc(occ.id, 'team_member_id', e.target.value || null)} disabled={!canEdit} className="px-1 py-0.5 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm w-full">
+                        <option value="">-</option>
+                        {teamMembers.map(m => <option key={m.id} value={m.id}>{m.abbreviation}</option>)}
+                      </select>
+                    </td>
+                    <td className="py-1 px-1">
+                      {canEdit && (
+                        <button onClick={() => handleDeleteOcc(occ.id)} className="w-6 h-6 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors">
+                          <TrashIcon />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-6 text-gray-500 dark:text-gray-400">Keine Termine vorhanden. Klicken Sie auf "Generieren" oder fügen Sie manuell Termine hinzu.</div>
+        )}
+
+        <div className="flex justify-between items-center mt-4 border-t border-gray-200 dark:border-slate-700 pt-4">
+          {canEdit && (
+            <button onClick={handleAddOcc} className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded text-sm hover:bg-blue-200 dark:hover:bg-blue-900/50 font-medium transition-colors">
+              + Termin hinzufügen
+            </button>
+          )}
+          <button onClick={handleClose} disabled={saving} className="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50 transition-colors">
+            {saving ? 'Speichern...' : 'Fertig'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// =========================================================================
 // MAIN APPLICATION
 // =========================================================================
 
@@ -772,8 +951,8 @@ const SAPBasisPlanner = () => {
     document.title = `SAP Basis Jahresplaner ${appVersion}`;
   }, [appVersion]);
   // Multi-User Locking
-  const [myLocks, setMyLocks] = useState(new Set());
-  // Online Users
+  const [activeSidId, setActiveSidId] = useState(null);
+  const [mySidLocks, setMySidLocks] = useState(new Set());
   const [onlineUsers, setOnlineUsers] = useState([]);
   // Skills & Schulungen
   const [matrixColumns, setMatrixColumns] = useState([]);
@@ -874,26 +1053,27 @@ const SAPBasisPlanner = () => {
 
   // Heartbeat for locks
   useEffect(() => {
-    if (myLocks.size === 0) return;
+    if (mySidLocks.size === 0) return;
 
     const interval = setInterval(async () => {
-      for (const landscapeId of myLocks) {
+      for (const sidId of mySidLocks) {
         try {
-          await api.acquireLock(landscapeId);
+          await api.acquireLock(sidId);
         } catch (err) {
-          console.warn(`Failed to renew lock for landscape ${landscapeId}:`, err);
-          // If lock lost, remove from myLocks to stop trying
-          setMyLocks(prev => {
+          console.warn(`Failed to renew lock for SID ${sidId}:`, err);
+          // If lock lost, remove from mySidLocks to stop trying
+          setMySidLocks(prev => {
             const newSet = new Set(prev);
-            newSet.delete(landscapeId);
+            newSet.delete(sidId);
             return newSet;
           });
+          if (activeSidId === sidId) setActiveSidId(null);
         }
       }
     }, 1000 * 60 * 4); // Every 4 minutes
 
     return () => clearInterval(interval);
-  }, [myLocks]);
+  }, [mySidLocks, activeSidId]);
 
   // Online Users tracking heartbeat
   useEffect(() => {
@@ -901,19 +1081,91 @@ const SAPBasisPlanner = () => {
 
     const trackOnline = async () => {
       try {
-        await api.ping();
-        const users = await api.getOnlineUsers();
+        await api.ping(activeSidId);
+        const [users, locks] = await Promise.all([
+          api.getOnlineUsers(),
+          api.getLocks()
+        ]);
         setOnlineUsers(users);
+
+        // Merge fresh lock data into landscapes state
+        const locksMap = {};
+        locks.forEach(lock => {
+          locksMap[lock.sid_id] = {
+            user_id: lock.user_id,
+            username: lock.username,
+            abbreviation: lock.abbreviation || lock.username.substring(0, 3).toUpperCase(),
+            expires_at: lock.expires_at
+          };
+        });
+        setLandscapes(prev => prev.map(landscape => ({
+          ...landscape,
+          sids: landscape.sids.map(sid => ({
+            ...sid,
+            lock: locksMap[sid.id] || null
+          }))
+        })));
       } catch (err) {
         console.warn('Online tracking failed', err);
       }
     };
 
     trackOnline(); // Initial call
-    const interval = setInterval(trackOnline, 30000); // Poll every 30 seconds
+    const interval = setInterval(trackOnline, 15000); // Poll every 15 seconds
 
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, activeSidId]);
+
+  // Lock acquisition handler
+  const handleSidInteraction = useCallback(async (sidId) => {
+    if (activeSidId === sidId) return; // Already active/locked by us
+    if (!canEdit) return; // Viewers shouldn't lock
+
+    try {
+      await api.acquireLock(sidId);
+      
+      // Success: release previous lock if any
+      if (activeSidId) {
+        try { await api.releaseLock(activeSidId); } catch(e) {}
+      }
+      
+      setActiveSidId(sidId);
+      setMySidLocks(new Set([sidId]));
+      api.ping(sidId).catch(e => console.error(e)); // Broadcast active status immediately
+    } catch (error) {
+       console.warn('SID already locked or lock failed', error);
+    }
+  }, [activeSidId, canEdit]);
+
+
+  // Release lock when changing tabs away from gantt
+  useEffect(() => {
+    if (activeTab !== 'gantt' && activeSidId) {
+      api.releaseLock(activeSidId).catch(e => console.error(e));
+      api.ping(null).catch(e => console.error(e));
+      setActiveSidId(null);
+      setMySidLocks(new Set());
+    }
+  }, [activeTab, activeSidId]);
+
+  // Release lock on window unload (refresh or close)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (activeSidId) {
+        // Use fetch with keepalive instead of sendBeacon to ensure auth cookies are sent
+        fetch(`/api/sids/${activeSidId}/lock`, { method: 'DELETE', keepalive: true }).catch(() => {});
+        fetch('/api/users/ping', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activeSidId: null }),
+          keepalive: true
+        }).catch(() => {});
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [activeSidId]);
 
   // Check authentication on mount
   useEffect(() => {
@@ -1225,6 +1477,9 @@ const SAPBasisPlanner = () => {
   const [copySidDialog, setCopySidDialog] = useState({ isOpen: false, sourceSidId: null, sourceLandscapeId: null, targetLandscapeId: '', newName: '' });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
 
+  // Series popup state
+  const [seriesPopup, setSeriesPopup] = useState({ isOpen: false, series: null, landscapeId: null, sidId: null });
+
   // Load maintenance sundays with other data
   const loadMaintenanceSundays = async () => {
     try {
@@ -1254,6 +1509,16 @@ const SAPBasisPlanner = () => {
 
   // Toggle collapse state for a single landscape
   const toggleLandscapeCollapse = (landscapeId) => {
+    // If collapsing and our active SID is in this landscape, release the lock
+    if (!collapsedLandscapes.has(landscapeId) && activeSidId) {
+      const landscape = landscapes.find(l => l.id === landscapeId);
+      if (landscape && landscape.sids.some(s => s.id === activeSidId)) {
+        api.releaseLock(activeSidId).catch(() => {});
+        api.ping(null).catch(() => {});
+        setActiveSidId(null);
+        setMySidLocks(new Set());
+      }
+    }
     setCollapsedLandscapes(prev => {
       const newSet = new Set(prev);
       if (newSet.has(landscapeId)) {
@@ -1266,6 +1531,13 @@ const SAPBasisPlanner = () => {
   };
 
   const toggleSidCollapse = (sidId) => {
+    // If collapsing and this SID is currently locked by us, release the lock
+    if (!collapsedSids.has(sidId) && activeSidId === sidId) {
+      api.releaseLock(sidId).catch(() => {});
+      api.ping(null).catch(() => {});
+      setActiveSidId(null);
+      setMySidLocks(new Set());
+    }
     setCollapsedSids(prev => {
       const newSet = new Set(prev);
       if (newSet.has(sidId)) {
@@ -1528,6 +1800,69 @@ const SAPBasisPlanner = () => {
         }
       }
     });
+  };
+
+  // Convert activity to series
+  const convertToSeries = async (landscapeId, sidId, activityId) => {
+    if (!canEdit) return;
+    try {
+      const newSeries = await api.convertToSeries(activityId, sidId);
+      setLandscapes(prev => prev.map(l =>
+        l.id === landscapeId ? {
+          ...l,
+          sids: l.sids.map(s =>
+            s.id === sidId ? {
+              ...s,
+              activities: s.activities.filter(a => a.id !== activityId),
+              series: [...(s.series || []), newSeries]
+            } : s
+          )
+        } : l
+      ));
+      // Open the popup immediately
+      setSeriesPopup({ isOpen: true, series: newSeries, landscapeId, sidId });
+    } catch (error) {
+      alert('Fehler: ' + error.message);
+    }
+  };
+
+  // Delete an entire series
+  const deleteSeriesHandler = (landscapeId, sidId, seriesId, occCount) => {
+    if (!canEdit) return;
+    setDeleteConfirm({
+      isOpen: true,
+      title: 'Serie löschen',
+      message: `Serie mit ${occCount} Termin${occCount !== 1 ? 'en' : ''} wirklich löschen?`,
+      onConfirm: async () => {
+        try {
+          await api.deleteSeries(seriesId);
+          setLandscapes(prev => prev.map(l =>
+            l.id === landscapeId ? {
+              ...l,
+              sids: l.sids.map(s =>
+                s.id === sidId ? { ...s, series: (s.series || []).filter(sr => sr.id !== seriesId) } : s
+              )
+            } : l
+          ));
+        } catch (error) {
+          alert('Fehler: ' + error.message);
+        }
+      }
+    });
+  };
+
+  // Open series popup editor
+  const openSeriesPopup = (landscapeId, sidId, series) => {
+    setSeriesPopup({ isOpen: true, series, landscapeId, sidId });
+  };
+
+  // Refresh series data after editing in popup
+  const refreshSeriesInState = async (landscapeId, sidId) => {
+    try {
+      await loadData();
+    } catch (e) {
+      console.error('Failed to refresh series', e);
+    }
   };
 
   const updateActivity = async (landscapeId, sidId, activityId, field, value) => {
@@ -2427,7 +2762,7 @@ const SAPBasisPlanner = () => {
                   };
 
                   return (
-                    <div key={sid.id} className="flex items-stretch hover:bg-gray-50">
+                    <div key={sid.id} className="flex items-stretch">
                       <div className={`gantt-row-label min-w-48 pl-4 text-sm flex items-center gap-1 py-1 border-b ${viewMode === 'year' ? 'border-gray-400' : 'border-gray-100'}`}>
                         <span className={sid.isPRD ? 'font-bold text-red-600' : ''}>
                           {sid.name || 'Neue SID'}
@@ -3210,40 +3545,32 @@ const SAPBasisPlanner = () => {
           </div>
 
           {landscapes.map(landscape => {
-            const isLockedByOther = landscape.lock && landscape.lock.user_id !== (user?.id);
-            // We show lock indicator and disable all inputs if locked by other
-
             return (
-              <div key={landscape.id} className={`mb-6 border rounded-lg p-4 ${isLockedByOther ? 'border-red-300 bg-red-50/10 shadow-inner' : 'border-gray-200 shadow-sm'}`}>
+              <div key={landscape.id} className="mb-6 border border-gray-200 shadow-sm rounded-lg p-4">
                 <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <div className="flex items-center gap-3">
-                    {isLockedByOther && (
-                      <div className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold animate-pulse">
-                        <span>🔒 Gesperrt durch {landscape.lock.username}</span>
-                      </div>
-                    )}
                     {/* Sort Order Input */}
                     <div className="relative">
                       <input name={`landscapePos-${landscape.id}`} type="number" defaultValue={landscape.sort_order || 0}
                         key={`sort-${landscape.id}-${landscape.sort_order}`}
-                        disabled={!canEdit || isLockedByOther}
+                        disabled={!canEdit}
                         min="0"
                         max="99"
                         onBlur={(e) => {
                           const val = e.target.value.replace(/[^0-9]/g, '');
                           if (val !== String(landscape.sort_order || 0)) {
-                            updateLandscape(landscape.id, 'sort_order', val);
+                             updateLandscape(landscape.id, 'sort_order', val);
                           }
                         }}
-                        className={`w-8 h-8 text-center font-bold text-white rounded focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 bg-blue-600 ${(!canEdit || isLockedByOther) ? 'cursor-default opacity-50' : 'cursor-text'}`}
+                        className={`w-8 h-8 text-center font-bold text-white rounded focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 bg-blue-600 ${!canEdit ? 'cursor-default opacity-50' : 'cursor-text'}`}
                       />
                     </div>
 
                     <input name={`landscapeName-${landscape.id}`} type="text" value={landscape.name}
                       onChange={(e) => updateLandscape(landscape.id, 'name', e.target.value)}
-                      disabled={!canEdit || isLockedByOther}
+                      disabled={!canEdit}
                       maxLength={35}
-                      className={`text-lg font-bold px-2 py-1 border-b-2 border-blue-600 bg-transparent text-blue-700 ${(!canEdit || isLockedByOther) ? 'cursor-default' : ''}`}
+                      className={`text-lg font-bold px-2 py-1 border-b-2 border-blue-600 bg-transparent text-blue-700 ${!canEdit ? 'cursor-default' : ''}`}
                     />
                     <button
                       onClick={() => toggleLandscapeCollapse(landscape.id)}
@@ -3252,7 +3579,7 @@ const SAPBasisPlanner = () => {
                       {collapsedLandscapes.has(landscape.id) ? '+ Aufklappen' : '- Zuklappen'}
                     </button>
                   </div>
-                  {canEdit && !isLockedByOther && (
+                  {canEdit && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => addSID(landscape.id)}
@@ -3271,11 +3598,37 @@ const SAPBasisPlanner = () => {
                   )}
                 </div>
 
-                {!collapsedLandscapes.has(landscape.id) && landscape.sids.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(sid => (
-                  <div key={sid.id} className="ml-0 md:ml-4 mb-4 border-l-4 border-blue-300 pl-4">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      {/* SID Sort Order Input */}
-                      <div className="relative">
+                {!collapsedLandscapes.has(landscape.id) && landscape.sids.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map(sid => {
+                  const isLockedByOther = sid.lock && String(sid.lock.user_id) !== String(user?.id);
+                  const activeOnSid = onlineUsers.filter(u => u.activeSidId === sid.id && String(u.id) !== String(user?.id));
+
+                  return (
+                    <div 
+                      key={sid.id} 
+                      data-sid-id={sid.id}
+                      className={`ml-0 md:ml-4 mb-4 border-l-4 pl-4 transition-all duration-300 ${isLockedByOther ? 'border-red-400 opacity-75' : 'border-blue-300'}`}
+                      onFocusCapture={() => handleSidInteraction(sid.id)}
+                      onClickCapture={() => handleSidInteraction(sid.id)}
+                    >
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
+                        {isLockedByOther && (
+                          <div className="flex items-center gap-1" title={`Gesperrt durch ${sid.lock.username}`}>
+                            <span className="px-2 py-1 bg-red-600 text-white border border-red-700 rounded text-xs font-bold shadow-sm">
+                              🔒 {sid.lock.abbreviation || sid.lock.username.substring(0, 3).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                        {!isLockedByOther && activeOnSid.length > 0 && (
+                          <div className="flex items-center gap-1" title="Wird gerade bearbeitet">
+                            {activeOnSid.map(u => (
+                              <span key={u.id} className="px-2 py-1 bg-blue-100 text-blue-800 border border-blue-300 rounded text-xs font-bold animate-pulse shadow-sm">
+                                ✍️ {u.abbreviation}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {/* SID Sort Order Input */}
+                        <div className="relative">
                         <input name={`sidPos-${landscape.id}-${sid.id}`} type="number" defaultValue={sid.sort_order || 1}
                           key={`sid-sort-${sid.id}-${sid.sort_order}`}
                           disabled={!canEdit || isLockedByOther}
@@ -3492,6 +3845,17 @@ const SAPBasisPlanner = () => {
                                   </select>
                                 )}
                               </div>
+                              {canEdit && !isLockedByOther && activity.type !== 'update' && (
+                                <label className="flex items-center gap-1 text-sm cursor-pointer" title="In Serie umwandeln">
+                                  <input
+                                    type="checkbox"
+                                    checked={false}
+                                    onChange={() => convertToSeries(landscape.id, sid.id, activity.id)}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="font-medium text-blue-600">Serie</span>
+                                </label>
+                              )}
                               {canEdit && !isLockedByOther && (
                                 <button onClick={() => deleteActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200">
                                   <TrashIcon />
@@ -3602,8 +3966,52 @@ const SAPBasisPlanner = () => {
                         </div>
                       );
                     })}
+
+                    {/* Compact Series Rows */}
+                    {!collapsedSids.has(sid.id) && (sid.series || []).map(series => {
+                      const seriesType = activityTypes.find(t => t.id === series.typeId);
+                      const occCount = (series.occurrences || []).length;
+                      const today = new Date().toISOString().split('T')[0];
+                      const nextOcc = (series.occurrences || []).find(o => o.date >= today);
+                      const ruleLabel = series.ruleType === 'every_x_weeks' ? `Alle ${series.ruleValue} Wochen`
+                        : series.ruleType === 'x_per_year' ? `${series.ruleValue}× pro Jahr`
+                        : 'Manuell';
+
+                      return (
+                        <div key={`series-${series.id}`} className="ml-0 md:ml-4 mb-2 pl-3 py-2 pr-1 bg-blue-50 dark:bg-slate-800 border border-blue-200 dark:border-slate-700 rounded flex flex-wrap items-center gap-3">
+                          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: seriesType?.color }} />
+                          <span className="font-medium text-sm dark:text-gray-200">{seriesType?.label || series.typeId}</span>
+                          <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded text-xs font-bold">
+                            Serie ({occCount}×)
+                          </span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{ruleLabel}</span>
+                          {nextOcc && (
+                            <span className="text-xs text-gray-600 dark:text-gray-400">
+                              Nächste: <span className="font-medium dark:text-gray-300">{formatDateDE(nextOcc.date)}</span>
+                            </span>
+                          )}
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button
+                              onClick={() => openSeriesPopup(landscape.id, sid.id, series)}
+                              className="px-2 py-1 bg-blue-600 dark:bg-blue-700 text-white rounded text-xs hover:bg-blue-700 dark:hover:bg-blue-600 font-medium"
+                            >
+                              ▶ Details
+                            </button>
+                            {canEdit && !isLockedByOther && (
+                              <button
+                                onClick={() => deleteSeriesHandler(landscape.id, sid.id, series.id, occCount)}
+                                className="flex items-center justify-center w-7 h-7 bg-red-100 text-red-700 rounded hover:bg-red-200"
+                              >
+                                <TrashIcon />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })}
@@ -3720,6 +4128,29 @@ const SAPBasisPlanner = () => {
                                 const dur = parseInt(sub.duration) || 0;
                                 totalDays += dur;
                                 const q = getQuarter(sub);
+                                if (q >= 0) quarterDays[q] += dur;
+                              }
+                            }
+                          });
+                        });
+                        // Series occurrences (hours → days at 8h/day)
+                        (sid.series || []).forEach(series => {
+                          (series.occurrences || []).forEach(occ => {
+                            const memberId = occ.teamMemberId || occ.team_member_id || series.teamMemberId || series.team_member_id;
+                            if (parseInt(memberId) === member.id) {
+                              const sd = occ.date;
+                              if (sd && new Date(sd).getFullYear() === year) {
+                                let dur = 0.5; // Default: 0.5 days
+                                const st = occ.start_time || '';
+                                const et = occ.end_time || '';
+                                if (st && et) {
+                                  const [sh, sm] = st.split(':').map(Number);
+                                  const [eh, em] = et.split(':').map(Number);
+                                  dur = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 480 * 100) / 100; // 480 min = 8h
+                                  if (dur <= 0) dur = 0.5;
+                                }
+                                totalDays += dur;
+                                const q = getQuarter({ startDate: sd });
                                 if (q >= 0) quarterDays[q] += dur;
                               }
                             }
@@ -5208,6 +5639,34 @@ const SAPBasisPlanner = () => {
                   }
                 });
               });
+              // Series occurrences (hours → days at 8h/day)
+              (sid.series || []).forEach(series => {
+                (series.occurrences || []).forEach(occ => {
+                  if (occ.date >= range.start && occ.date <= range.end) {
+                    let dur = 0.5; // Default: 0.5 days
+                    const st = occ.start_time || '';
+                    const et = occ.end_time || '';
+                    if (st && et) {
+                      const [sh, sm] = st.split(':').map(Number);
+                      const [eh, em] = et.split(':').map(Number);
+                      dur = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 480 * 100) / 100;
+                      if (dur <= 0) dur = 0.5;
+                    }
+                    allActivities.push({
+                      landscape: landscape.name,
+                      sid: sid.name,
+                      typeId: series.typeId || series.type_id,
+                      duration: dur,
+                      teamMemberId: occ.teamMemberId || occ.team_member_id || series.teamMemberId || series.team_member_id || null,
+                      startDate: occ.date,
+                      startTime: occ.start_time || '',
+                      endTime: occ.end_time || '',
+                      isSubActivity: false,
+                      isSeries: true
+                    });
+                  }
+                });
+              });
             });
           });
 
@@ -5636,6 +6095,24 @@ const SAPBasisPlanner = () => {
           </div>
         )
       }
+
+      {/* Series Popup Editor */}
+      {seriesPopup.isOpen && seriesPopup.series && (
+        <SeriesPopupEditor
+          key={seriesPopup.series.id}
+          series={seriesPopup.series}
+          activityTypes={activityTypes}
+          teamMembers={teamMembers}
+          canEdit={canEdit}
+          year={year}
+          api={api}
+          onClose={async () => {
+            await refreshSeriesInState(seriesPopup.landscapeId, seriesPopup.sidId);
+            setSeriesPopup({ isOpen: false, series: null, landscapeId: null, sidId: null });
+          }}
+        />
+      )}
+
 
       {/* Add Skill Dialog */}
       {
