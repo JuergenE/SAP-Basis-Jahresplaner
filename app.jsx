@@ -1031,10 +1031,13 @@ const SAPBasisPlanner = () => {
         }))
       }));
       setLandscapes(landsWithEndDates);
-      // Collapse all SIDs by default on load
+      // Collapse all SIDs by default on load (only if not already tracking state)
       const allSidIds = new Set();
       landsWithEndDates.forEach(l => l.sids.forEach(s => allSidIds.add(s.id)));
-      setCollapsedSids(allSidIds);
+      setCollapsedSids(prev => {
+        if (prev && prev.size > 0) return prev; // Preserve user's current view state
+        return allSidIds; // Initial load
+      });
       setMaintenanceSundays(sundays);
     } catch (error) {
       if (error.message === 'SESSION_EXPIRED') {
@@ -2731,6 +2734,26 @@ const SAPBasisPlanner = () => {
                     }
                   });
 
+                  // Add series occurrences
+                  (sid.series || []).forEach(series => {
+                    const seriesType = activityTypes.find(t => t.id === series.typeId);
+                    (series.occurrences || []).forEach(occ => {
+                      allRenderables.push({
+                        ...occ,
+                        id: `occ-${occ.id}`,
+                        color: seriesType?.color || '#3B82F6',
+                        name: seriesType?.label || series.typeId,
+                        startDate: occ.date,
+                        endDate: occ.date,
+                        duration: 1,
+                        isSub: false,
+                        isSeriesOccurrence: true,
+                        seriesId: series.id,
+                        type: series.typeId
+                      });
+                    });
+                  });
+
                   const checkOverlap = (a, b) => new Date(a.startDate) <= new Date(b.endDate) && new Date(b.startDate) <= new Date(a.endDate);
                   const assigned = [];
                   let maxLanes = 1;
@@ -4097,17 +4120,19 @@ const SAPBasisPlanner = () => {
                     // Calculate total days for this team member
                     let totalDays = 0;
                     const quarterDays = [0, 0, 0, 0]; // Q1, Q2, Q3, Q4
+                    
+                    const getQuarter = (item) => {
+                      const sd = item.startDate || item.start_date;
+                      if (sd) {
+                        const month = new Date(sd).getMonth(); // 0-11
+                        return Math.floor(month / 3); // 0-3
+                      }
+                      return -1;
+                    };
+
                     landscapes.forEach(landscape => {
                       landscape.sids.forEach(sid => {
                         sid.activities.forEach(activity => {
-                          const getQuarter = (item) => {
-                            const sd = item.startDate || item.start_date;
-                            if (sd) {
-                              const month = new Date(sd).getMonth(); // 0-11
-                              return Math.floor(month / 3); // 0-3
-                            }
-                            return -1;
-                          };
                           const actMemberId = activity.teamMemberId || activity.team_member_id;
                           if (actMemberId === member.id) {
                             if (!activity.subActivities || activity.subActivities.length === 0) {
@@ -4188,16 +4213,16 @@ const SAPBasisPlanner = () => {
                             </span>
                           </td>
                         )}
-                        {canManageTeam && <td className="p-3 text-center">{quarterDays[0]}</td>}
-                        {canManageTeam && <td className="p-3 text-center">{quarterDays[1]}</td>}
-                        {canManageTeam && <td className="p-3 text-center">{quarterDays[2]}</td>}
-                        {canManageTeam && <td className="p-3 text-center">{quarterDays[3]}</td>}
-                        <td className="p-3 text-right font-semibold">{totalDays + trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)} Tage</td>
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[0] * 100) / 100}</td>}
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[1] * 100) / 100}</td>}
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[2] * 100) / 100}</td>}
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[3] * 100) / 100}</td>}
+                        <td className="p-3 text-right font-semibold">{Math.round((totalDays + trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)) * 100) / 100} Tage</td>
                         <td className="p-3 text-center font-bold">
                           <span>
-                            {(member.working_days || 0)
+                            {Math.round(((member.working_days || 0)
                               - trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)
-                              - totalDays}
+                              - totalDays) * 100) / 100}
                           </span>
                         </td>
                         {canManageTeam && (
