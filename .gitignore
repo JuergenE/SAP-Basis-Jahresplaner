@@ -19,3 +19,8 @@ parse_jsx.js
 # Data directory
 data/
 .agents/
+
+# Temporary Build / Workaround directories
+build-tmp/
+my-cache/
+npm-cache/
