@@ -35,11 +35,6 @@ node_modules/
 app.js
 styles.css
 
-# Frontend source files (compiled, not needed at runtime)
-app.jsx
-input.css
-tailwind.config.js
-
 # Screenshots and images (optional in container)
 screenshot.png
 

@@ -54,9 +54,8 @@ COPY --from=builder --chown=node:node /src/node_modules ./node_modules
 COPY --from=builder --chown=node:node /src/styles.css ./
 COPY --from=builder --chown=node:node /src/app.js ./
 
-# Copy application source code
-# Since we are restricted to specific files based on .dockerignore, we can copy .
-COPY --chown=node:node . .
+# Copy application source code explicitly for the lightweight runner
+COPY --chown=node:node package.json server.js sap-planner.html ./
 
 # Expose the application port
 EXPOSE 3232
