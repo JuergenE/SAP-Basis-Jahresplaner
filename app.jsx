@@ -2124,24 +2124,65 @@ const SAPBasisPlanner = () => {
       const lines = ['Systemlandschaft;SID;PRD;Aktivitätstyp;Sub-Aktivität;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit'];
 
       landscapes.forEach(landscape => {
-        landscape.sids.filter(sid => sid.visibleInGantt !== false).forEach(sid => {
-          if (sid.activities.length === 0) {
+        // We export ALL SIDs to make the report complete, matching user's "PRD-only" concern
+        landscape.sids.forEach(sid => {
+          // Prepare a flattened list of all "renderables" (activities, sub-activities, series occurrences)
+          const exportItems = [];
+
+          // 1. Regular Activities
+          (sid.activities || []).forEach(act => {
+            const hasSub = (act.subActivities || []).length > 0;
+            if (hasSub) {
+              act.subActivities.forEach(sub => {
+                exportItems.push({
+                  typeId: act.type || act.type_id,
+                  name: sub.name,
+                  startDate: sub.startDate || sub.start_date,
+                  endDate: sub.endDate || sub.end_date,
+                  duration: sub.duration,
+                  startTime: sub.startTime || sub.start_time || '',
+                  endTime: sub.endTime || sub.end_time || '',
+                  isSub: true
+                });
+              });
+            } else {
+              exportItems.push({
+                typeId: act.type || act.type_id,
+                name: '',
+                startDate: act.startDate || act.start_date,
+                endDate: act.endDate || act.end_date,
+                duration: act.duration,
+                startTime: act.startTime || act.start_time || '',
+                endTime: act.endTime || act.end_time || '',
+                isSub: false
+              });
+            }
+          });
+
+          // 2. Series Occurrences
+          (sid.series || []).forEach(series => {
+            (series.occurrences || []).forEach(occ => {
+              exportItems.push({
+                typeId: series.typeId || series.type_id,
+                name: '',
+                startDate: occ.date || occ.startDate || occ.start_date,
+                endDate: occ.date || occ.endDate || occ.end_date,
+                duration: 1,
+                startTime: occ.startTime || occ.start_time || series.defaultStartTime || series.default_start_time || '',
+                endTime: occ.endTime || occ.end_time || series.defaultEndTime || series.default_end_time || '',
+                isSub: false
+              });
+            });
+          });
+
+          if (exportItems.length === 0) {
             lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};;;;;;;`);
           } else {
-            sid.activities.forEach(activity => {
-              const actType = activityTypes.find(t => t.id === activity.type);
-              const actLabel = actType?.label || activity.type;
-
-              // Check if activity has sub-activities
-              if (activity.subActivities && activity.subActivities.length > 0) {
-                // Export each sub-activity as a separate row
-                activity.subActivities.forEach(subActivity => {
-                  lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};${subActivity.name};${formatDateDE(subActivity.startDate)};${subActivity.duration};${formatDateDE(subActivity.endDate)};${subActivity.start_time || ''};${subActivity.end_time || ''}`);
-                });
-              } else {
-                // Export activity without sub-activities
-                lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};;${formatDateDE(activity.startDate)};${activity.duration};${formatDateDE(activity.endDate)};${activity.start_time || ''};${activity.end_time || ''}`);
-              }
+            exportItems.forEach(item => {
+              const actType = activityTypes.find(t => t.id === item.typeId);
+              const actLabel = actType?.label || item.typeId || '';
+              
+              lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};${item.name};${formatDateDE(item.startDate)};${item.duration};${formatDateDE(item.endDate)};${item.startTime};${item.endTime}`);
             });
           }
         });
@@ -5920,7 +5961,7 @@ const SAPBasisPlanner = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 auswertung-section">
                     <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
                       <div className="text-sm text-blue-600 font-medium">Gesamte Arbeitstage</div>
-                      <div className="text-3xl font-bold text-blue-800 mt-1">{totalDays}</div>
+                      <div className="text-3xl font-bold text-blue-800 mt-1">{Math.round(totalDays * 100) / 100}</div>
                     </div>
                     <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
                       <div className="text-sm text-purple-600 font-medium">Aktive Teammitglieder</div>
@@ -5992,11 +6033,11 @@ const SAPBasisPlanner = () => {
                                       className="text-center px-3 py-2 border border-gray-300 font-mono"
                                       style={val > 0 ? { backgroundColor: `${t.color}${Math.round(intensity * 40 + 15).toString(16).padStart(2, '0')}` } : {}}
                                     >
-                                      {val > 0 ? val : '–'}
+                                      {val > 0 ? (Math.round(val * 100) / 100) : '–'}
                                     </td>
                                   );
                                 })}
-                                <td className="text-center px-3 py-2 border border-gray-300 font-bold">{memberTotal}</td>
+                                <td className="text-center px-3 py-2 border border-gray-300 font-bold">{Math.round(memberTotal * 100) / 100}</td>
                               </tr>
                             );
                           })}
@@ -6004,9 +6045,9 @@ const SAPBasisPlanner = () => {
                           <tr className="bg-gray-100 font-bold">
                             <td className="px-3 py-2 border border-gray-300">Gesamt</td>
                             {activityTypes.filter(t => daysByType[t.id]).map(t => (
-                              <td key={t.id} className="text-center px-3 py-2 border border-gray-300">{daysByType[t.id]}</td>
+                              <td key={t.id} className="text-center px-3 py-2 border border-gray-300">{(Math.round(daysByType[t.id] * 100) / 100)}</td>
                             ))}
-                            <td className="text-center px-3 py-2 border border-gray-300">{totalDays}</td>
+                            <td className="text-center px-3 py-2 border border-gray-300">{Math.round(totalDays * 100) / 100}</td>
                           </tr>
                         </tbody>
                       </table>

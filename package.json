@@ -11,8 +11,8 @@
         "dev": "node --watch server.js",
         "build:css": "npx @tailwindcss/cli -i ./input.css -o ./styles.css --minify",
         "dev:css": "npx @tailwindcss/cli -i ./input.css -o ./styles.css --watch",
-        "build:js": "npx babel app.jsx --out-file app.js --minified --presets @babel/preset-react",
-        "dev:js": "npx babel app.jsx --out-file app.js --watch --presets @babel/preset-react"
+        "build:js": "babel app.jsx --out-file app.js --presets @babel/preset-react",
+        "dev:js": "babel app.jsx --out-file app.js --presets @babel/preset-react --watch"
     },
     "keywords": [
         "sap",
