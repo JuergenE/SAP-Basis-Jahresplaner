@@ -2094,7 +2094,15 @@ const SAPBasisPlanner = () => {
 
   const exportJSON = () => {
     try {
-      const dataObj = { year, bundesland, landscapes, activityTypes };
+      // Filter landscapes and SIDs by visibility
+      const filteredLandscapes = landscapes
+        .map(l => ({
+          ...l,
+          sids: l.sids.filter(sid => sid.visibleInGantt !== false)
+        }))
+        .filter(l => l.sids.length > 0);
+
+      const dataObj = { year, bundesland, landscapes: filteredLandscapes, activityTypes };
       const dataStr = JSON.stringify(dataObj, null, 2);
       const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8' });
       const url = URL.createObjectURL(blob);

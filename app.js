@@ -2629,10 +2629,15 @@ const SAPBasisPlanner = () => {
 
   const exportJSON = () => {
     try {
+      // Filter landscapes and SIDs by visibility
+      const filteredLandscapes = landscapes.map(l => ({
+        ...l,
+        sids: l.sids.filter(sid => sid.visibleInGantt !== false)
+      })).filter(l => l.sids.length > 0);
       const dataObj = {
         year,
         bundesland,
-        landscapes,
+        landscapes: filteredLandscapes,
         activityTypes
       };
       const dataStr = JSON.stringify(dataObj, null, 2);
