@@ -2124,8 +2124,11 @@ const SAPBasisPlanner = () => {
       const lines = ['Systemlandschaft;SID;PRD;Aktivitätstyp;Sub-Aktivität;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit'];
 
       landscapes.forEach(landscape => {
-        // We export ALL SIDs to make the report complete, matching user's "PRD-only" concern
-        landscape.sids.forEach(sid => {
+        // Only export landscapes that have at least one visible SID
+        const visibleSids = landscape.sids.filter(sid => sid.visibleInGantt !== false);
+        if (visibleSids.length === 0) return;
+
+        visibleSids.forEach(sid => {
           // Prepare a flattened list of all "renderables" (activities, sub-activities, series occurrences)
           const exportItems = [];
 
@@ -4254,16 +4257,16 @@ const SAPBasisPlanner = () => {
                             </span>
                           </td>
                         )}
-                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[0] * 100) / 100}</td>}
-                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[1] * 100) / 100}</td>}
-                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[2] * 100) / 100}</td>}
-                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[3] * 100) / 100}</td>}
-                        <td className="p-3 text-right font-semibold">{Math.round((totalDays + trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)) * 100) / 100} Tage</td>
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[0])}</td>}
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[1])}</td>}
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[2])}</td>}
+                        {canManageTeam && <td className="p-3 text-center">{Math.round(quarterDays[3])}</td>}
+                        <td className="p-3 text-right font-semibold">{Math.round(totalDays + trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0))} Tage</td>
                         <td className="p-3 text-center font-bold">
                           <span>
-                            {Math.round(((member.working_days || 0)
+                            {Math.round((member.working_days || 0)
                               - trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)
-                              - totalDays) * 100) / 100}
+                              - totalDays)}
                           </span>
                         </td>
                         {canManageTeam && (

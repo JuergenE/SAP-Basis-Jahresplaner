@@ -2658,8 +2658,10 @@ const SAPBasisPlanner = () => {
       const timestamp = now.getFullYear().toString() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0') + String(now.getSeconds()).padStart(2, '0');
       const lines = ['Systemlandschaft;SID;PRD;Aktivitätstyp;Sub-Aktivität;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit'];
       landscapes.forEach(landscape => {
-        // We export ALL SIDs to make the report complete, matching user's "PRD-only" concern
-        landscape.sids.forEach(sid => {
+        // Only export landscapes that have at least one visible SID
+        const visibleSids = landscape.sids.filter(sid => sid.visibleInGantt !== false);
+        if (visibleSids.length === 0) return;
+        visibleSids.forEach(sid => {
           // Prepare a flattened list of all "renderables" (activities, sub-activities, series occurrences)
           const exportItems = [];
 
@@ -4536,17 +4538,17 @@ const SAPBasisPlanner = () => {
       className: "font-semibold text-gray-700"
     }, trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0))), canManageTeam && /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-center"
-    }, Math.round(quarterDays[0] * 100) / 100), canManageTeam && /*#__PURE__*/React.createElement("td", {
+    }, Math.round(quarterDays[0])), canManageTeam && /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-center"
-    }, Math.round(quarterDays[1] * 100) / 100), canManageTeam && /*#__PURE__*/React.createElement("td", {
+    }, Math.round(quarterDays[1])), canManageTeam && /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-center"
-    }, Math.round(quarterDays[2] * 100) / 100), canManageTeam && /*#__PURE__*/React.createElement("td", {
+    }, Math.round(quarterDays[2])), canManageTeam && /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-center"
-    }, Math.round(quarterDays[3] * 100) / 100), /*#__PURE__*/React.createElement("td", {
+    }, Math.round(quarterDays[3])), /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-right font-semibold"
-    }, Math.round((totalDays + trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)) * 100) / 100, " Tage"), /*#__PURE__*/React.createElement("td", {
+    }, Math.round(totalDays + trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0)), " Tage"), /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-center font-bold"
-    }, /*#__PURE__*/React.createElement("span", null, Math.round(((member.working_days || 0) - trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0) - totalDays) * 100) / 100)), canManageTeam && /*#__PURE__*/React.createElement("td", {
+    }, /*#__PURE__*/React.createElement("span", null, Math.round((member.working_days || 0) - trainings.filter(t => t.booked_date > 0 && t.participants && (t.participants.includes(member.name) || t.participants.includes(member.abbreviation))).reduce((sum, t) => sum + (parseInt(t.days) || 0), 0) - totalDays))), canManageTeam && /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-right"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: async () => {
