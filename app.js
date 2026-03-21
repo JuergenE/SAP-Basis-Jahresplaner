@@ -9,20 +9,20 @@ const isPRDSystem = sid => sid?.systemType === 'PRD' || sid?.isPRD;
 const getSystemTypeColor = type => {
   switch (type) {
     case 'PRD':
-      return 'bg-red-100 text-red-700 font-bold';
+      return 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 font-bold';
     case 'PPRD':
-      return 'bg-orange-100 text-orange-700';
+      return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300';
     case 'QAS':
-      return 'bg-purple-100 text-purple-700';
+      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300';
     case 'TST':
-      return 'bg-yellow-100 text-yellow-800';
+      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300';
     case 'TRN':
-      return 'bg-emerald-100 text-emerald-700';
+      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
     case 'SBX':
-      return 'bg-stone-200 text-stone-700';
+      return 'bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300';
     case 'DEV':
     default:
-      return 'bg-blue-100 text-blue-700';
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
   }
 };
 
