@@ -1,5 +1,8 @@
 const { useState, useEffect, useMemo, useCallback } = React;
 
+const SYSTEM_TYPES = ['PRD', 'PPRD', 'QAS', 'TST', 'DEV', 'SBX', 'TRN'];
+const isPRDSystem = (sid) => sid?.systemType === 'PRD' || sid?.isPRD;
+
 // =========================================================================
 // API CLIENT
 // =========================================================================
@@ -117,7 +120,7 @@ class ApiClient {
   async getLocks() { return this.request('/api/sids/locks'); }
 
   // SIDs
-  async createSid(landscape_id, name, is_prd, visible_in_gantt) { return this.request('/api/sids', { method: 'POST', body: JSON.stringify({ landscape_id, name, is_prd, visible_in_gantt }) }); }
+  async createSid(landscape_id, name, systemType, visible_in_gantt) { return this.request('/api/sids', { method: 'POST', body: JSON.stringify({ landscape_id, name, systemType, visible_in_gantt }) }); }
   async updateSid(id, data) { return this.request(`/api/sids/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async deleteSid(id) { return this.request(`/api/sids/${id}`, { method: 'DELETE' }); }
   async copySid(id, target_landscape_id, new_name) {
@@ -271,18 +274,18 @@ const defaultData = {
       id: 1,
       name: 'ERP Landschaft',
       sids: [
-        { id: 1, name: 'RTT', isPRD: false, activities: [] },
-        { id: 2, name: 'RTI', isPRD: false, activities: [] },
-        { id: 3, name: 'DB3', isPRD: true, activities: [] }
+        { id: 1, name: 'RTT', systemType: 'DEV', activities: [] },
+        { id: 2, name: 'RTI', systemType: 'DEV', activities: [] },
+        { id: 3, name: 'DB3', systemType: 'PRD', activities: [] }
       ]
     },
     {
       id: 2,
       name: 'SAP Solution Manager Landschaft',
       sids: [
-        { id: 4, name: 'SOT', isPRD: false, activities: [] },
-        { id: 5, name: 'SOQ', isPRD: false, activities: [] },
-        { id: 6, name: 'SOL', isPRD: true, activities: [] }
+        { id: 4, name: 'SOT', systemType: 'DEV', activities: [] },
+        { id: 5, name: 'SOQ', systemType: 'DEV', activities: [] },
+        { id: 6, name: 'SOL', systemType: 'PRD', activities: [] }
       ]
     }
   ]
@@ -1781,7 +1784,7 @@ const SAPBasisPlanner = () => {
   const addSID = async (landscapeId) => {
     if (!canEdit) return;
     try {
-      const newSid = await api.createSid(landscapeId, '', false);
+      const newSid = await api.createSid(landscapeId, '', 'DEV', true);
       setLandscapes(landscapes.map(l =>
         l.id === landscapeId ? { ...l, sids: [...l.sids, newSid] } : l
       ));
@@ -1826,7 +1829,7 @@ const SAPBasisPlanner = () => {
       return;
     }
     if (!canEdit) return;
-    const apiFieldMap = { 'isPRD': 'is_prd', 'visibleInGantt': 'visible_in_gantt' };
+    const apiFieldMap = { 'systemType': 'system_type', 'isPRD': 'is_prd', 'visibleInGantt': 'visible_in_gantt' };
     const apiField = apiFieldMap[field] || field;
     try {
       await api.updateSid(sidId, { [apiField]: value });
@@ -1869,7 +1872,7 @@ const SAPBasisPlanner = () => {
         duration: 1,
         includes_weekend: false
       });
-      newActivity.endDate = calculateEndDate(startDate, 1, year, bundesland, false);
+      newActivity.endDate = calculateEndDate(startDate, 1, year, bundesland, false); // Activities have their own includesWeekend flag
 
       setLandscapes(landscapes.map(l =>
         l.id === landscapeId ? {
@@ -2232,7 +2235,7 @@ const SAPBasisPlanner = () => {
         + String(now.getHours()).padStart(2, '0')
         + String(now.getMinutes()).padStart(2, '0')
         + String(now.getSeconds()).padStart(2, '0');
-      const lines = ['Systemlandschaft;SID;PRD;Aktivitätstyp;ID;Sub-Aktivität;Serie;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit;Wochenende inkludiert'];
+      const lines = ['Systemlandschaft;SID;Typ;Aktivitätstyp;ID;Sub-Aktivität;Serie;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit;Wochenende inkludiert'];
 
       landscapes.forEach(landscape => {
         // Only export landscapes that have at least one visible SID
@@ -2298,14 +2301,15 @@ const SAPBasisPlanner = () => {
             });
           });
 
+          const sidType = sid.systemType || (sid.isPRD ? 'PRD' : 'DEV');
           if (exportItems.length === 0) {
-            lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};;;;;;;;;;`);
+            lines.push(`${landscape.name};${sid.name};${sidType};;;;;;;;;;`);
           } else {
             exportItems.forEach(item => {
               const actType = activityTypes.find(t => t.id === item.typeId);
               const actLabel = actType?.label || item.typeId || '';
               
-              lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};${item.typeId || ''};${item.name};${item.isSeries ? 'Ja' : 'Nein'};${formatDateDE(item.startDate)};${item.duration};${formatDateDE(item.endDate)};${item.startTime};${item.endTime};${item.includesWeekend ? 'Ja' : 'Nein'}`);
+              lines.push(`${landscape.name};${sid.name};${sidType};${actLabel};${item.typeId || ''};${item.name};${item.isSeries ? 'Ja' : 'Nein'};${formatDateDE(item.startDate)};${item.duration};${formatDateDE(item.endDate)};${item.startTime};${item.endTime};${item.includesWeekend ? 'Ja' : 'Nein'}`);
             });
           }
         });
@@ -2951,10 +2955,14 @@ const SAPBasisPlanner = () => {
                   return (
                     <div key={sid.id} className="flex items-stretch">
                       <div className={`gantt-row-label min-w-48 pl-4 text-sm flex items-center gap-1 py-1 border-b ${viewMode === 'year' ? 'border-gray-400' : 'border-gray-100'}`}>
-                        <span className={sid.isPRD ? 'font-bold text-red-600' : ''}>
+                        <span className={(sid.systemType === 'PRD' || sid.isPRD) ? 'font-bold text-red-600' : ''}>
                           {sid.name || 'Neue SID'}
                         </span>
-                        {sid.isPRD && <span className="text-xs bg-red-100 text-red-700 px-1 rounded">PRD</span>}
+                        { (sid.systemType || sid.isPRD) && (
+                          <span className={`text-xs ml-1 px-1 rounded ${ (sid.systemType === 'PRD' || sid.isPRD) ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {sid.systemType || (sid.isPRD ? 'PRD' : 'DEV')}
+                          </span>
+                        )}
                       </div>
                       <div className={`flex-1 relative border-l border-gray-200 border-b ${viewMode === 'year' ? 'border-gray-400' : 'border-gray-100'}`} style={{ height: `${rowHeight}px` }}>
                         {/* Day cells with weekend/holiday indicators */}
@@ -3851,14 +3859,20 @@ const SAPBasisPlanner = () => {
                         disabled={!canEdit || isLockedByOther}
                         className={`px-2 py-1 border border-gray-300 rounded font-medium w-24 ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
                       />
-                      <label className="flex items-center gap-2 text-sm">
-                        <input name={`sidPrd-${landscape.id}-${sid.id}`} type="checkbox" checked={sid.isPRD || false}
-                          onChange={(e) => updateSID(landscape.id, sid.id, 'isPRD', e.target.checked)}
+                      <div className="flex items-center gap-1 ml-4 border-l pl-4 border-gray-300">
+                        <select
+                          name={`sidType-${landscape.id}-${sid.id}`}
+                          value={sid.systemType || (sid.isPRD ? 'PRD' : 'DEV')}
+                          onChange={(e) => updateSID(landscape.id, sid.id, 'systemType', e.target.value)}
                           disabled={!canEdit || isLockedByOther}
-                          className="w-4 h-4"
-                        />
-                        <span className={sid.isPRD ? 'text-red-600 font-bold' : ''}>PRD System</span>
-                      </label>
+                          className={`px-1 py-1 border border-gray-300 rounded text-xs font-medium ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''} ${(sid.systemType === 'PRD' || sid.isPRD) ? 'text-red-600 font-bold border-red-300' : ''}`}
+                          style={{ minWidth: '70px' }}
+                        >
+                          {SYSTEM_TYPES.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                      </div>
                       <label className="flex items-center gap-2 text-sm ml-4 border-l pl-4 border-gray-300">
                         <input name={`sidVis-${landscape.id}-${sid.id}`} type="checkbox" checked={sid.visibleInGantt !== false}
                           onChange={(e) => updateSID(landscape.id, sid.id, 'visibleInGantt', e.target.checked)}

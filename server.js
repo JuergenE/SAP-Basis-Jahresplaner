@@ -448,6 +448,18 @@ const initDatabase = () => {
     console.log('✓ Added created_by to users');
   } catch (e) { }
 
+  // Migration: Add system_type column to sids table and migrate is_prd
+  try {
+    const tableDef = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='sids'").get();
+    if (tableDef && !tableDef.sql.includes('system_type')) {
+      db.exec(`ALTER TABLE sids ADD COLUMN system_type TEXT DEFAULT 'DEV'`);
+      db.exec(`UPDATE sids SET system_type = 'PRD' WHERE is_prd = 1`);
+      console.log('✓ Added system_type column to sids and migrated is_prd data');
+    }
+  } catch (e) {
+    console.error('Migration system_type failed:', e.message);
+  }
+
   // Migration: Add start_time and end_time columns to activities table
   try {
     db.exec(`ALTER TABLE activities ADD COLUMN start_time TEXT`);
@@ -1185,37 +1197,36 @@ app.delete('/api/landscapes/:id', authenticate, requireAdmin, (req, res) => {
 // =========================================================================
 
 app.post('/api/sids', authenticate, requireAdmin, (req, res) => {
-  const { landscape_id, name, is_prd, visible_in_gantt } = req.body;
-
-  if (!landscape_id) {
-    return res.status(400).json({ error: 'landscape_id erforderlich' });
-  }
+  const { landscape_id, name, systemType, visible_in_gantt } = req.body;
+  if (!landscape_id || !name) return res.status(400).json({ error: 'Missing fields' });
 
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sids WHERE landscape_id = ?').get(landscape_id);
   const sortOrder = (maxOrder?.max || 0) + 1;
 
-  const result = db.prepare('INSERT INTO sids (landscape_id, name, is_prd, visible_in_gantt, sort_order) VALUES (?, ?, ?, ?, ?)').run(
+  const result = db.prepare('INSERT INTO sids (landscape_id, name, system_type, is_prd, visible_in_gantt, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(
     landscape_id,
-    name || '',
-    is_prd ? 1 : 0,
-    visible_in_gantt !== false ? 1 : 0, // Default to true
+    name,
+    systemType || 'DEV',
+    (systemType === 'PRD') ? 1 : 0,
+    visible_in_gantt !== undefined ? (visible_in_gantt ? 1 : 0) : 1, // Default to true
     sortOrder
   );
 
   res.json({
     id: result.lastInsertRowid,
-    landscape_id,
-    name: name || '',
-    isPRD: !!is_prd,
+    landscapeId: landscape_id,
+    name,
+    systemType: systemType || 'DEV',
+    isPRD: systemType === 'PRD',
     visibleInGantt: visible_in_gantt !== false,
-    sort_order: sortOrder,
+    sortOrder,
     activities: []
   });
 });
 
 app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
   const { id } = req.params;
-  const { name, is_prd, visible_in_gantt, notes, sort_order } = req.body;
+  const { name, systemType, visible_in_gantt, notes, sort_order } = req.body;
 
   const updates = [];
   const values = [];
@@ -1250,9 +1261,11 @@ app.put('/api/sids/:id', authenticate, requireAdmin, (req, res) => {
     updates.push('name = ?');
     values.push(name);
   }
-  if (is_prd !== undefined) {
-    updates.push('is_prd = ?');
-    values.push(is_prd ? 1 : 0);
+  if (systemType !== undefined) {
+    updates.push('system_type = ?');
+    values.push(systemType);
+    updates.push('is_prd = ?'); // Keep is_prd in sync for backward compatibility
+    values.push(systemType === 'PRD' ? 1 : 0);
   }
   if (visible_in_gantt !== undefined) {
     updates.push('visible_in_gantt = ?');
@@ -1294,9 +1307,10 @@ app.post('/api/sids/:id/copy', authenticate, requireAdmin, (req, res) => {
       const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sids WHERE landscape_id = ?').get(target_landscape_id);
       const sortOrder = (maxOrder?.max || 0) + 1;
 
-      const sidResult = db.prepare('INSERT INTO sids (landscape_id, name, is_prd, visible_in_gantt, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(
+      const sidResult = db.prepare('INSERT INTO sids (landscape_id, name, system_type, is_prd, visible_in_gantt, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
         target_landscape_id,
         new_name,
+        sourceSid.system_type || 'DEV', // Copy system_type
         sourceSid.is_prd,
         sourceSid.visible_in_gantt,
         sourceSid.notes,
@@ -2175,10 +2189,15 @@ app.post('/api/import/json', authenticate, requireAdmin, (req, res) => {
 
           if (landscape.sids && Array.isArray(landscape.sids)) {
             landscape.sids.forEach((sid, sidIndex) => {
-              const sidResult = db.prepare('INSERT INTO sids (landscape_id, name, is_prd, sort_order) VALUES (?, ?, ?, ?)').run(
+              db.prepare(`
+                INSERT INTO sids (landscape_id, name, system_type, is_prd, visible_in_gantt, sort_order) 
+                VALUES (?, ?, ?, ?, ?, ?)
+              `).run(
                 newLandscapeId,
                 sid.name || '',
+                sid.systemType || (sid.isPRD ? 'PRD' : 'DEV'), // Use systemType if available, otherwise derive from isPRD
                 sid.isPRD ? 1 : 0,
+                sid.visibleInGantt !== false ? 1 : 0, // Default to true
                 sidIndex
               );
               const newSidId = sidResult.lastInsertRowid;
@@ -2310,7 +2329,9 @@ app.get('/api/backup/export', authenticate, requireAdmin, (req, res) => {
         });
         return {
           ...sid,
-          isPRD: !!sid.is_prd,
+          name: sid.name,
+          isPRD: sid.system_type === 'PRD',
+          systemType: sid.system_type || 'DEV',
           visibleInGantt: !!sid.visible_in_gantt,
           activities: activitiesWithSubs
         };
@@ -2471,12 +2492,13 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
           if (landscape.sids && Array.isArray(landscape.sids)) {
             landscape.sids.forEach((sid, sidIndex) => {
               const sidResult = db.prepare(`
-                INSERT INTO sids (landscape_id, name, is_prd, visible_in_gantt, notes, sort_order) 
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO sids (landscape_id, name, system_type, is_prd, visible_in_gantt, notes, sort_order) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)
               `).run(
                 newLandscapeId,
                 sid.name || '',
-                sid.isPRD || sid.is_prd ? 1 : 0,
+                sid.systemType || (sid.isPRD ? 'PRD' : 'DEV'), // Use systemType if available, otherwise derive from isPRD
+                sid.isPRD || sid.systemType === 'PRD' ? 1 : 0, // Keep is_prd in sync
                 (sid.visibleInGantt ?? sid.visible_in_gantt ?? true) ? 1 : 0,
                 sid.notes || '',
                 sid.sort_order ?? sidIndex
