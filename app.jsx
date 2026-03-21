@@ -725,6 +725,85 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
     } catch (e) { alert('Fehler: ' + e.message); }
   };
 
+  const handleCsvUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result;
+        if (typeof text !== 'string') return;
+        
+        const lines = text.split(/\r?\n/).filter(line => line.trim());
+        if (lines.length <= 1) return; // Only header or empty
+        
+        const header = lines[0].split(';').map(h => h.trim().toLowerCase());
+        const dateIdx = header.indexOf('datum');
+        const fromIdx = header.indexOf('von');
+        const toIdx = header.indexOf('bis');
+        const weIdx = header.indexOf('we');
+
+        if (dateIdx === -1) {
+          throw new Error('CSV muss eine Spalte "Datum" enthalten (Format: TT.MM.JJJJ)');
+        }
+
+        const newOccurrences = [];
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(';');
+          const dateStr = cols[dateIdx]?.trim();
+          if (!dateStr) continue;
+
+          // Parse DD.MM.YY or DD.MM.YYYY to YYYY-MM-DD
+          let parsedDate = '';
+          const parts = dateStr.split('.');
+          if (parts.length === 3) {
+            let yearPart = parts[2];
+            if (yearPart.length === 2) {
+              yearPart = `20${yearPart}`; // Assume 20xx for 2-digit years
+            }
+            parsedDate = `${yearPart}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          } else {
+            parsedDate = dateStr; // Fallback
+          }
+
+          let startTime = fromIdx !== -1 ? cols[fromIdx]?.trim() : localDefaults.startTime;
+          let endTime = toIdx !== -1 ? cols[toIdx]?.trim() : localDefaults.endTime;
+          if (startTime && !startTime.includes(':')) startTime = '';
+          if (endTime && !endTime.includes(':')) endTime = '';
+
+          let includesWeekend = false;
+          if (weIdx !== -1) {
+            const weStr = cols[weIdx]?.trim().toLowerCase();
+            includesWeekend = ['ja', 'x', '1', 'true', 'y', 'yes'].includes(weStr);
+          }
+
+          try {
+            const newOcc = await api.createOccurrence(series.id, {
+              date: parsedDate,
+              start_time: startTime || '',
+              end_time: endTime || '',
+              includes_weekend: includesWeekend,
+              team_member_id: localDefaults.teamMemberId || null
+            });
+            newOccurrences.push(newOcc);
+          } catch (createErr) {
+            console.error('Fehler beim Erstellen eines hochgeladenen Termins:', createErr);
+          }
+        }
+        
+        if (newOccurrences.length > 0) {
+          setLocalOccs(prev => [...prev, ...newOccurrences]);
+          alert(`${newOccurrences.length} Termine erfolgreich importiert.`);
+        }
+      } catch (err) {
+        alert('Fehler beim CSV Upload: ' + err.message);
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+    event.target.value = ''; // Reset input
+  };
+
   const handleUpdateOcc = async (occId, field, value) => {
     try {
       const data = {};
@@ -853,9 +932,15 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
 
         <div className="flex justify-between items-center mt-4 border-t border-gray-200 dark:border-slate-700 pt-4">
           {canEdit && (
-            <button onClick={handleAddOcc} className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded text-sm hover:bg-blue-200 dark:hover:bg-blue-900/50 font-medium transition-colors">
-              + Termin hinzufügen
-            </button>
+            <div className="flex gap-2">
+              <button onClick={handleAddOcc} className="px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded text-sm hover:bg-blue-200 dark:hover:bg-blue-900/50 font-medium transition-colors">
+                + Termin hinzufügen
+              </button>
+              <label className="cursor-pointer px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-300 dark:border-purple-800 rounded text-sm hover:bg-purple-200 dark:hover:bg-purple-900/50 font-medium transition-colors flex items-center justify-center">
+                + CSV Upload
+                <input type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
+              </label>
+            </div>
           )}
           <button onClick={handleClose} disabled={saving} className="ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50 transition-colors">
             {saving ? 'Speichern...' : 'Fertig'}
@@ -1565,13 +1650,31 @@ const SAPBasisPlanner = () => {
   // Add new activity type
   const addActivityType = async () => {
     if (!canEdit) return;
-    const newId = `custom_${Date.now()}`;
+    const label = prompt('Name des neuen Aktivitätstyps:');
+    if (!label || !label.trim()) return;
+    const trimmedLabel = label.trim();
+
+    // Derive a short slug ID from the label
+    const slugBase = trimmedLabel
+      .toLowerCase()
+      .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
+
+    // Ensure uniqueness
+    const existingIds = new Set(activityTypes.map(t => t.id));
+    let newId = slugBase;
+    let suffix = 2;
+    while (existingIds.has(newId)) {
+      newId = `${slugBase}_${suffix}`;
+      suffix++;
+    }
+
     const usedColors = activityTypes.map(t => t.color);
     const availableColor = availableColors.find(c => !usedColors.includes(c)) || '#6b7280';
     try {
-      const newType = await api.createActivityType({ id: newId, label: 'Neue Aktivität', color: availableColor });
+      const newType = await api.createActivityType({ id: newId, label: trimmedLabel, color: availableColor });
       setActivityTypes([...activityTypes, newType]);
-      setEditingTypeId(newId);
     } catch (error) {
       alert('Fehler: ' + error.message);
     }
@@ -2129,7 +2232,7 @@ const SAPBasisPlanner = () => {
         + String(now.getHours()).padStart(2, '0')
         + String(now.getMinutes()).padStart(2, '0')
         + String(now.getSeconds()).padStart(2, '0');
-      const lines = ['Systemlandschaft;SID;PRD;Aktivitätstyp;Sub-Aktivität;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit'];
+      const lines = ['Systemlandschaft;SID;PRD;Aktivitätstyp;ID;Sub-Aktivität;Serie;Startdatum;Dauer (Arbeitstage);Enddatum;Startzeit;Endzeit;Wochenende inkludiert'];
 
       landscapes.forEach(landscape => {
         // Only export landscapes that have at least one visible SID
@@ -2146,6 +2249,7 @@ const SAPBasisPlanner = () => {
             if (hasSub) {
               act.subActivities.forEach(sub => {
                 exportItems.push({
+                  id: sub.id,
                   typeId: act.type || act.type_id,
                   name: sub.name,
                   startDate: sub.startDate || sub.start_date,
@@ -2153,11 +2257,14 @@ const SAPBasisPlanner = () => {
                   duration: sub.duration,
                   startTime: sub.startTime || sub.start_time || '',
                   endTime: sub.endTime || sub.end_time || '',
-                  isSub: true
+                  isSub: true,
+                  isSeries: false,
+                  includesWeekend: sub.includesWeekend !== undefined ? sub.includesWeekend : (sub.includes_weekend || false)
                 });
               });
             } else {
               exportItems.push({
+                id: act.id,
                 typeId: act.type || act.type_id,
                 name: '',
                 startDate: act.startDate || act.start_date,
@@ -2165,7 +2272,9 @@ const SAPBasisPlanner = () => {
                 duration: act.duration,
                 startTime: act.startTime || act.start_time || '',
                 endTime: act.endTime || act.end_time || '',
-                isSub: false
+                isSub: false,
+                isSeries: false,
+                includesWeekend: act.includesWeekend !== undefined ? act.includesWeekend : (act.includes_weekend || false)
               });
             }
           });
@@ -2174,6 +2283,7 @@ const SAPBasisPlanner = () => {
           (sid.series || []).forEach(series => {
             (series.occurrences || []).forEach(occ => {
               exportItems.push({
+                id: `occ_${occ.id}`, // Occurrences might need a prefix to distinguish from regular activities if IDs overlap, but using the DB id is fine 'occ.id'
                 typeId: series.typeId || series.type_id,
                 name: '',
                 startDate: occ.date || occ.startDate || occ.start_date,
@@ -2181,19 +2291,21 @@ const SAPBasisPlanner = () => {
                 duration: 1,
                 startTime: occ.startTime || occ.start_time || series.defaultStartTime || series.default_start_time || '',
                 endTime: occ.endTime || occ.end_time || series.defaultEndTime || series.default_end_time || '',
-                isSub: false
+                isSub: false,
+                isSeries: true,
+                includesWeekend: occ.includesWeekend !== undefined ? occ.includesWeekend : (occ.includes_weekend || false)
               });
             });
           });
 
           if (exportItems.length === 0) {
-            lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};;;;;;;`);
+            lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};;;;;;;;;;`);
           } else {
             exportItems.forEach(item => {
               const actType = activityTypes.find(t => t.id === item.typeId);
               const actLabel = actType?.label || item.typeId || '';
               
-              lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};${item.name};${formatDateDE(item.startDate)};${item.duration};${formatDateDE(item.endDate)};${item.startTime};${item.endTime}`);
+              lines.push(`${landscape.name};${sid.name};${sid.isPRD ? 'Ja' : 'Nein'};${actLabel};${item.typeId || ''};${item.name};${item.isSeries ? 'Ja' : 'Nein'};${formatDateDE(item.startDate)};${item.duration};${formatDateDE(item.endDate)};${item.startTime};${item.endTime};${item.includesWeekend ? 'Ja' : 'Nein'}`);
             });
           }
         });
