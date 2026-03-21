@@ -114,9 +114,9 @@ Jeder Benutzer kann zwischen hellem und dunklem Design wechseln. Der Toggle befi
 
 Die Checkbox „Sichtbar in Gantt" speichert die Auswahl **pro Benutzer**. Jeder Benutzer kann individuell entscheiden, welche SIDs im Gantt-Chart angezeigt werden, ohne die Ansicht anderer Benutzer zu beeinflussen.
 
-### 📊 CSV Export für alle Benutzer
+### 📊 CSV Gantt Export für alle Benutzer
 
-Der CSV Export steht nun **allen Benutzern** zur Verfügung (nicht nur Admin/Teamlead):
+Der CSV Gantt Export steht nun **allen Benutzern** zur Verfügung (nicht nur Admin/Teamlead):
 
 - Exportiert nur die SIDs, die für den aktuellen Benutzer **„Sichtbar in Gantt"** sind
 - Dateiname mit Zeitstempel: `SAP-Basis-Planung-<Jahr>-<YYYYMMDD-HHMMSS>.csv`
