@@ -1198,14 +1198,15 @@ app.delete('/api/landscapes/:id', authenticate, requireAdmin, (req, res) => {
 
 app.post('/api/sids', authenticate, requireAdmin, (req, res) => {
   const { landscape_id, name, systemType, visible_in_gantt } = req.body;
-  if (!landscape_id || !name) return res.status(400).json({ error: 'Missing fields' });
+  if (!landscape_id) return res.status(400).json({ error: 'landscape_id erforderlich' });
 
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sids WHERE landscape_id = ?').get(landscape_id);
   const sortOrder = (maxOrder?.max || 0) + 1;
+  const safeName = name || '';
 
   const result = db.prepare('INSERT INTO sids (landscape_id, name, system_type, is_prd, visible_in_gantt, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(
     landscape_id,
-    name,
+    safeName,
     systemType || 'DEV',
     (systemType === 'PRD') ? 1 : 0,
     visible_in_gantt !== undefined ? (visible_in_gantt ? 1 : 0) : 1, // Default to true
@@ -1215,7 +1216,7 @@ app.post('/api/sids', authenticate, requireAdmin, (req, res) => {
   res.json({
     id: result.lastInsertRowid,
     landscapeId: landscape_id,
-    name,
+    name: safeName,
     systemType: systemType || 'DEV',
     isPRD: systemType === 'PRD',
     visibleInGantt: visible_in_gantt !== false,
