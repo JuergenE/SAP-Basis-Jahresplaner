@@ -3,6 +3,19 @@ const { useState, useEffect, useMemo, useCallback } = React;
 const SYSTEM_TYPES = ['PRD', 'PPRD', 'QAS', 'TST', 'DEV', 'SBX', 'TRN'];
 const isPRDSystem = (sid) => sid?.systemType === 'PRD' || sid?.isPRD;
 
+const getSystemTypeColor = (type) => {
+  switch(type) {
+    case 'PRD': return 'bg-red-100 text-red-700 font-bold';
+    case 'PPRD': return 'bg-orange-100 text-orange-700';
+    case 'QAS': return 'bg-purple-100 text-purple-700';
+    case 'TST': return 'bg-yellow-100 text-yellow-800';
+    case 'TRN': return 'bg-emerald-100 text-emerald-700';
+    case 'SBX': return 'bg-stone-200 text-stone-700';
+    case 'DEV': 
+    default: return 'bg-blue-100 text-blue-700';
+  }
+};
+
 // =========================================================================
 // API CLIENT
 // =========================================================================
@@ -2958,11 +2971,9 @@ const SAPBasisPlanner = () => {
                         <span className={(sid.systemType === 'PRD' || sid.isPRD) ? 'font-bold text-red-600' : ''}>
                           {sid.name || 'Neue SID'}
                         </span>
-                        { (sid.systemType || sid.isPRD) && (
-                          <span className={`text-xs ml-1 px-1 rounded ${ (sid.systemType === 'PRD' || sid.isPRD) ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                            {sid.systemType || (sid.isPRD ? 'PRD' : 'DEV')}
-                          </span>
-                        )}
+                        <span className={`text-[10px] ml-2 px-1.5 py-0.5 rounded ${getSystemTypeColor(sid.systemType || (sid.isPRD ? 'PRD' : 'DEV'))}`}>
+                          {sid.systemType || (sid.isPRD ? 'PRD' : 'DEV')}
+                        </span>
                       </div>
                       <div className={`flex-1 relative border-l border-gray-200 border-b ${viewMode === 'year' ? 'border-gray-400' : 'border-gray-100'}`} style={{ height: `${rowHeight}px` }}>
                         {/* Day cells with weekend/holiday indicators */}
