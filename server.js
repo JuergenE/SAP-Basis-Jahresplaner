@@ -1062,6 +1062,7 @@ app.get('/api/landscapes', authenticate, (req, res) => {
       return {
         ...sid,
         isPRD: !!sid.is_prd,
+        systemType: sid.system_type || (sid.is_prd ? 'PRD' : 'DEV'),
         visibleInGantt,
         lock: sidLocksMap[sid.id] || null,
         activities: activities.map(a => {
