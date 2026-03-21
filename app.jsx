@@ -1829,7 +1829,7 @@ const SAPBasisPlanner = () => {
       return;
     }
     if (!canEdit) return;
-    const apiFieldMap = { 'systemType': 'system_type', 'isPRD': 'is_prd', 'visibleInGantt': 'visible_in_gantt' };
+    const apiFieldMap = { 'isPRD': 'is_prd', 'visibleInGantt': 'visible_in_gantt' };
     const apiField = apiFieldMap[field] || field;
     try {
       await api.updateSid(sidId, { [apiField]: value });
