@@ -1090,6 +1090,44 @@ const SAPBasisPlanner = () => {
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
 
+  // --- Drag-to-Scroll State & Handlers ---
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [startY, setStartY] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const handleMouseDown = (e) => {
+    // Prevent dragging on interactive elements
+    const tag = e.target.tagName;
+    if (['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA', 'LABEL', 'A'].includes(tag)) return;
+    // Prevent if clicking on SVG icons inside buttons
+    if (e.target.closest('button')) return;
+    if (e.button !== 0) return; // Only left-click
+
+    setIsDragging(true);
+    setStartX(e.clientX);
+    setStartY(e.clientY);
+    setScrollLeft(window.scrollX);
+    setScrollTop(window.scrollY);
+  };
+
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const walkX = (e.clientX - startX) * 1.5; // Drag speed multiplier
+    const walkY = (e.clientY - startY) * 1.5;
+    window.scrollTo(scrollLeft - walkX, scrollTop - walkY);
+  };
+
   // Check permissions
   // canEdit: Admin OR Teamlead can edit landscapes, SIDs, activities
   const canEdit = user?.role === 'admin' || user?.role === 'teamlead';
@@ -2770,7 +2808,13 @@ const SAPBasisPlanner = () => {
     const sliderMax = maxOffset;
 
     return (
-      <div className="bg-white rounded-lg shadow-lg p-4 mb-6 overflow-hidden">
+      <div 
+        className={`bg-white rounded-lg shadow-lg p-4 mb-6 overflow-hidden ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onMouseMove={handleMouseMove}
+      >
         <h2 className="text-xl font-bold mb-4">Gantt-Chart {year}</h2>
 
         {/* Navigation Controls */}
