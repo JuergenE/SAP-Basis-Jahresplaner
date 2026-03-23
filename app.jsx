@@ -162,6 +162,7 @@ class ApiClient {
   async createOccurrence(seriesId, data) { return this.request(`/api/series/${seriesId}/occurrences`, { method: 'POST', body: JSON.stringify(data) }); }
   async updateOccurrence(seriesId, occId, data) { return this.request(`/api/series/${seriesId}/occurrences/${occId}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async deleteOccurrence(seriesId, occId) { return this.request(`/api/series/${seriesId}/occurrences/${occId}`, { method: 'DELETE' }); }
+  async archiveOccurrence(seriesId, occId) { return this.request(`/api/series/${seriesId}/occurrences/${occId}/archive`, { method: 'PUT' }); }
   async regenerateSeries(id, year) { return this.request(`/api/series/${id}/generate`, { method: 'POST', body: JSON.stringify({ year }) }); }
   async convertToSeries(activity_id, sid_id) { return this.request('/api/series/convert', { method: 'POST', body: JSON.stringify({ activity_id, sid_id }) }); }
 
@@ -824,6 +825,8 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
 
   const handleUpdateOcc = async (occId, field, value) => {
     try {
+      const occ = localOccs.find(o => o.id === occId);
+      if (occ && occ.status && occ.status !== 'PLANNED') return;
       const data = {};
       if (field === 'date') data.date = value;
       else if (field === 'start_time') data.start_time = value;
@@ -837,8 +840,17 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
 
   const handleDeleteOcc = async (occId) => {
     try {
+      if (!window.confirm('Termin wirklich unwiderruflich löschen?')) return;
       await api.deleteOccurrence(series.id, occId);
       setLocalOccs(prev => prev.filter(o => o.id !== occId));
+    } catch (e) { alert('Fehler: ' + e.message); }
+  };
+
+  const handleArchiveOcc = async (occId) => {
+    try {
+      if (!window.confirm('Termin wirklich archivieren? Er wird dadurch im Plan eingefroren.')) return;
+      await api.archiveOccurrence(series.id, occId);
+      setLocalOccs(prev => prev.map(o => o.id === occId ? { ...o, status: 'ARCHIVED' } : o));
     } catch (e) { alert('Fehler: ' + e.message); }
   };
 
@@ -915,28 +927,35 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
                   <tr key={occ.id} className="border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50">
                     <td className="py-1 px-1 text-gray-500 dark:text-gray-400">{idx + 1}</td>
                     <td className="py-1 px-1">
-                      <input type="date" value={occ.date} onChange={e => handleUpdateOcc(occ.id, 'date', e.target.value)} className="px-1 py-0.5 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" disabled={!canEdit} />
+                      <input type="date" value={occ.date} onChange={e => handleUpdateOcc(occ.id, 'date', e.target.value)} className="px-1 py-0.5 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} />
                     </td>
                     <td className="py-1 px-1">
-                      <TimePicker value={occ.start_time || ''} onChange={v => handleUpdateOcc(occ.id, 'start_time', v)} disabled={!canEdit} />
+                      <TimePicker value={occ.start_time || ''} onChange={v => handleUpdateOcc(occ.id, 'start_time', v)} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} />
                     </td>
                     <td className="py-1 px-1">
-                      <TimePicker value={occ.end_time || ''} onChange={v => handleUpdateOcc(occ.id, 'end_time', v)} disabled={!canEdit} />
+                      <TimePicker value={occ.end_time || ''} onChange={v => handleUpdateOcc(occ.id, 'end_time', v)} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} />
                     </td>
                     <td className="py-1 px-1 text-center">
-                      <input type="checkbox" checked={!!occ.includesWeekend} onChange={e => handleUpdateOcc(occ.id, 'includes_weekend', e.target.checked)} disabled={!canEdit} className="w-4 h-4 rounded border-gray-300" />
+                      <input type="checkbox" checked={!!occ.includesWeekend} onChange={e => handleUpdateOcc(occ.id, 'includes_weekend', e.target.checked)} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} className="w-4 h-4 rounded border-gray-300" />
                     </td>
                     <td className="py-1 px-1">
-                      <select value={occ.teamMemberId || occ.team_member_id || ''} onChange={e => handleUpdateOcc(occ.id, 'team_member_id', e.target.value || null)} disabled={!canEdit} className="px-1 py-0.5 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm w-full">
+                      <select value={occ.teamMemberId || occ.team_member_id || ''} onChange={e => handleUpdateOcc(occ.id, 'team_member_id', e.target.value || null)} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} className="px-1 py-0.5 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm w-full">
                         <option value="">-</option>
                         {teamMembers.map(m => <option key={m.id} value={m.id}>{m.abbreviation}</option>)}
                       </select>
                     </td>
                     <td className="py-1 px-1">
                       {canEdit && (
-                        <button onClick={() => handleDeleteOcc(occ.id)} className="w-6 h-6 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors">
-                          <TrashIcon />
-                        </button>
+                        <>
+                          {(!occ.status || occ.status === 'PLANNED') && (
+                            <button onClick={() => handleDeleteOcc(occ.id)} className="w-6 h-6 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors" title="Termin unwiderruflich löschen">
+                              <TrashIcon />
+                            </button>
+                          )}
+                          {occ.status === 'COMPLETED' && (
+                            <button onClick={() => handleArchiveOcc(occ.id)} className="w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm" title="Termin archivieren">📦</button>
+                          )}
+                        </>
                       )}
                     </td>
                   </tr>

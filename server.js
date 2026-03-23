@@ -270,7 +270,8 @@ const initDatabase = () => {
       end_time TEXT DEFAULT '',
       includes_weekend BOOLEAN DEFAULT FALSE,
       team_member_id INTEGER REFERENCES team_members(id) ON DELETE SET NULL,
-      sort_order INTEGER DEFAULT 0
+      sort_order INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'PLANNED'
     );
     CREATE INDEX IF NOT EXISTS idx_series_occurrences_series ON series_occurrences(series_id);
 
@@ -497,6 +498,10 @@ const initDatabase = () => {
     db.exec(`ALTER TABLE sub_activities ADD COLUMN status TEXT DEFAULT 'PLANNED'`);
     console.log('✓ Added status to sub_activities');
   } catch (e) { }
+  try {
+    db.exec(`ALTER TABLE series_occurrences ADD COLUMN status TEXT DEFAULT 'PLANNED'`);
+    console.log('✓ Added status to series_occurrences');
+  } catch (e) { }
 
   // Migration: Add dark_mode column to users table if not exists
   try {
@@ -681,6 +686,14 @@ const autoUpdateActivityStatuses = () => {
     `);
     stmtSubCompleted.run(completedStr);
 
+    const stmtOccCompleted = db.prepare(`
+      UPDATE series_occurrences 
+      SET status = 'COMPLETED' 
+      WHERE status = 'PLANNED' 
+      AND date(date) <= ?
+    `);
+    stmtOccCompleted.run(completedStr);
+
     // 2. Move COMPLETED to ARCHIVED (7 days after end date)
     const stmtArchived = db.prepare(`
       UPDATE activities 
@@ -697,6 +710,14 @@ const autoUpdateActivityStatuses = () => {
       AND date(start_date, '+' || (duration - 1) || ' days') <= ?
     `);
     stmtSubArchived.run(archivedStr);
+
+    const stmtOccArchived = db.prepare(`
+      UPDATE series_occurrences 
+      SET status = 'ARCHIVED' 
+      WHERE status = 'COMPLETED' 
+      AND date(date) <= ?
+    `);
+    stmtOccArchived.run(archivedStr);
 
     if (resCompleted.changes > 0 || resArchived.changes > 0) {
       console.log(`✓ Auto-Archiver: Marked ${resCompleted.changes} activities COMPLETED and ${resArchived.changes} ARCHIVED.`);
@@ -1743,6 +1764,22 @@ app.put('/api/series/:id/occurrences/:occId', authenticate, requireAdmin, (req, 
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Archive occurrence
+app.put('/api/series/:id/occurrences/:occId/archive', authenticate, requireAdmin, (req, res) => {
+  const { id, occId } = req.params;
+  try {
+    const occ = db.prepare('SELECT status FROM series_occurrences WHERE id = ? AND series_id = ?').get(occId, id);
+    if (!occ) return res.status(404).json({ error: 'Begebenheit nicht gefunden' });
+    
+    db.prepare("UPDATE series_occurrences SET status = 'ARCHIVED' WHERE id = ?").run(occId);
+    logAction(req.user.id, req.user.username, 'ARCHIVE_OCCURRENCE', { occId, seriesId: id });
+    res.json({ success: true, message: 'Termin erfolgreich archiviert' });
+  } catch (error) {
+    console.error('Fehler beim Archivieren:', error);
+    res.status(500).json({ error: 'Datenbankfehler beim Archivieren' });
   }
 });
 
