@@ -189,7 +189,11 @@ const initDatabase = () => {
       type_id TEXT REFERENCES activity_types(id),
       start_date TEXT NOT NULL,
       duration INTEGER DEFAULT 1,
-      includes_weekend BOOLEAN DEFAULT FALSE
+      includes_weekend BOOLEAN DEFAULT FALSE,
+      team_member_id INTEGER REFERENCES team_members(id),
+      start_time TEXT,
+      end_time TEXT,
+      status TEXT DEFAULT 'PLANNED'
     );
 
     -- Maintenance Sundays (Wartungssonntage)
@@ -207,7 +211,11 @@ const initDatabase = () => {
       start_date TEXT NOT NULL,
       duration INTEGER DEFAULT 1,
       includes_weekend BOOLEAN DEFAULT FALSE,
-      sort_order INTEGER DEFAULT 0
+      sort_order INTEGER DEFAULT 0,
+      team_member_id INTEGER REFERENCES team_members(id),
+      start_time TEXT,
+      end_time TEXT,
+      status TEXT DEFAULT 'PLANNED'
     );
 
     -- Application Logs
@@ -480,7 +488,15 @@ const initDatabase = () => {
     console.log('✓ Added end_time to sub_activities');
   } catch (e) { }
 
-
+  // Migration: Add status column to activities and sub_activities tables
+  try {
+    db.exec(`ALTER TABLE activities ADD COLUMN status TEXT DEFAULT 'PLANNED'`);
+    console.log('✓ Added status to activities');
+  } catch (e) { }
+  try {
+    db.exec(`ALTER TABLE sub_activities ADD COLUMN status TEXT DEFAULT 'PLANNED'`);
+    console.log('✓ Added status to sub_activities');
+  } catch (e) { }
 
   // Migration: Add dark_mode column to users table if not exists
   try {
@@ -631,6 +647,69 @@ const initDatabase = () => {
 initDatabase();
 console.log(`✓ SAP Basis Jahresplaner Backend starting - Version: ${APP_VERSION}`);
 logAction(null, 'SYSTEM', 'STARTUP', { version: APP_VERSION });
+
+const autoUpdateActivityStatuses = () => {
+  try {
+    const COMPLETED_THRESHOLD_HOURS = 24;
+    const ARCHIVED_THRESHOLD_DAYS = 7;
+
+    const completedThresholdDate = new Date();
+    completedThresholdDate.setHours(completedThresholdDate.getHours() - COMPLETED_THRESHOLD_HOURS);
+    const completedStr = completedThresholdDate.toISOString().split('T')[0];
+
+    const archivedThresholdDate = new Date();
+    archivedThresholdDate.setDate(archivedThresholdDate.getDate() - ARCHIVED_THRESHOLD_DAYS);
+    const archivedStr = archivedThresholdDate.toISOString().split('T')[0];
+
+    // Compute end dates logically by adding duration (we'll do a simple approximation for SQLite or use date('now'))
+    // SQLite: date(start_date, '+' || (duration - 1) || ' days')
+    
+    // 1. Move PLANNED to COMPLETED
+    const stmtCompleted = db.prepare(`
+      UPDATE activities 
+      SET status = 'COMPLETED' 
+      WHERE status = 'PLANNED' 
+      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+    `);
+    const resCompleted = stmtCompleted.run(completedStr);
+
+    const stmtSubCompleted = db.prepare(`
+      UPDATE sub_activities 
+      SET status = 'COMPLETED' 
+      WHERE status = 'PLANNED' 
+      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+    `);
+    stmtSubCompleted.run(completedStr);
+
+    // 2. Move COMPLETED to ARCHIVED (7 days after end date)
+    const stmtArchived = db.prepare(`
+      UPDATE activities 
+      SET status = 'ARCHIVED' 
+      WHERE status = 'COMPLETED' 
+      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+    `);
+    const resArchived = stmtArchived.run(archivedStr);
+
+    const stmtSubArchived = db.prepare(`
+      UPDATE sub_activities 
+      SET status = 'ARCHIVED' 
+      WHERE status = 'COMPLETED' 
+      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+    `);
+    stmtSubArchived.run(archivedStr);
+
+    if (resCompleted.changes > 0 || resArchived.changes > 0) {
+      console.log(`✓ Auto-Archiver: Marked ${resCompleted.changes} activities COMPLETED and ${resArchived.changes} ARCHIVED.`);
+    }
+  } catch (err) {
+    console.error('Error auto-updating activity statuses:', err.message);
+  }
+};
+
+// Run on boot
+autoUpdateActivityStatuses();
+// Run every hour
+setInterval(autoUpdateActivityStatuses, 60 * 60 * 1000);
 
 // =========================================================================
 // LOGGING HELPER
@@ -1476,6 +1555,22 @@ app.delete('/api/activities/:id', authenticate, requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// Archive activity
+app.put('/api/activities/:id/archive', authenticate, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  try {
+    const activity = db.prepare('SELECT status FROM activities WHERE id = ?').get(id);
+    if (!activity) return res.status(404).json({ error: 'Aktivität nicht gefunden' });
+    
+    db.prepare("UPDATE activities SET status = 'ARCHIVED' WHERE id = ?").run(id);
+    logAction(req.user.id, req.user.username, 'ARCHIVE_ACTIVITY', { id });
+    res.json({ success: true, message: 'Aktivität erfolgreich archiviert' });
+  } catch (error) {
+    console.error('Fehler beim Archivieren:', error);
+    res.status(500).json({ error: 'Datenbankfehler beim Archivieren' });
+  }
+});
+
 // =========================================================================
 // ACTIVITY SERIES ROUTES
 // =========================================================================
@@ -1821,6 +1916,22 @@ app.delete('/api/sub-activities/:id', authenticate, requireAdmin, (req, res) => 
   const { id } = req.params;
   db.prepare('DELETE FROM sub_activities WHERE id = ?').run(id);
   res.json({ success: true });
+});
+
+// Archive sub-activity
+app.put('/api/sub-activities/:id/archive', authenticate, requireAdmin, (req, res) => {
+  const { id } = req.params;
+  try {
+    const subActivity = db.prepare('SELECT status FROM sub_activities WHERE id = ?').get(id);
+    if (!subActivity) return res.status(404).json({ error: 'Sub-Aktivität nicht gefunden' });
+    
+    db.prepare("UPDATE sub_activities SET status = 'ARCHIVED' WHERE id = ?").run(id);
+    logAction(req.user.id, req.user.username, 'ARCHIVE_SUBACTIVITY', { id });
+    res.json({ success: true, message: 'Sub-Aktivität erfolgreich archiviert' });
+  } catch (error) {
+    console.error('Fehler beim Archivieren:', error);
+    res.status(500).json({ error: 'Datenbankfehler beim Archivieren' });
+  }
 });
 
 // =========================================================================

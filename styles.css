@@ -1044,6 +1044,9 @@
   .border-red-700 {
     border-color: var(--color-red-700);
   }
+  .border-stone-300 {
+    border-color: var(--color-stone-300);
+  }
   .border-transparent {
     border-color: transparent;
   }
@@ -1609,6 +1612,9 @@
   .opacity-30 {
     opacity: 30%;
   }
+  .opacity-40 {
+    opacity: 40%;
+  }
   .opacity-50 {
     opacity: 50%;
   }
@@ -1620,6 +1626,9 @@
   }
   .opacity-75 {
     opacity: 75%;
+  }
+  .opacity-\[0\.85\] {
+    opacity: 0.85;
   }
   .shadow-\[1px_0_0_\#00b0f0\] {
     --tw-shadow: 1px 0 0 var(--tw-shadow-color, #00b0f0);
@@ -1648,6 +1657,10 @@
   .\!brightness-100 {
     --tw-brightness: brightness(100%) !important;
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,) !important;
+  }
+  .grayscale {
+    --tw-grayscale: grayscale(100%);
+    filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
   }
   .filter {
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
@@ -1865,6 +1878,13 @@
     &:hover {
       @media (hover: hover) {
         background-color: var(--color-red-700);
+      }
+    }
+  }
+  .hover\:bg-stone-300 {
+    &:hover {
+      @media (hover: hover) {
+        background-color: var(--color-stone-300);
       }
     }
   }

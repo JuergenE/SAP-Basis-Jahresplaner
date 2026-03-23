@@ -147,11 +147,13 @@ class ApiClient {
   async createActivity(data) { return this.request('/api/activities', { method: 'POST', body: JSON.stringify(data) }); }
   async updateActivity(id, data) { return this.request(`/api/activities/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async deleteActivity(id) { return this.request(`/api/activities/${id}`, { method: 'DELETE' }); }
+  async archiveActivity(id) { return this.request(`/api/activities/${id}/archive`, { method: 'PUT' }); }
 
   // Sub-Activities
   async createSubActivity(data) { return this.request('/api/sub-activities', { method: 'POST', body: JSON.stringify(data) }); }
   async updateSubActivity(id, data) { return this.request(`/api/sub-activities/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async deleteSubActivity(id) { return this.request(`/api/sub-activities/${id}`, { method: 'DELETE' }); }
+  async archiveSubActivity(id) { return this.request(`/api/sub-activities/${id}/archive`, { method: 'PUT' }); }
 
   // Activity Series
   async createSeries(data) { return this.request('/api/series', { method: 'POST', body: JSON.stringify(data) }); }
@@ -1905,7 +1907,7 @@ const SAPBasisPlanner = () => {
     setDeleteConfirm({
       isOpen: true,
       title: 'Aktivität löschen',
-      message: 'Aktivität wirklich löschen?',
+      message: 'Aktivität wirklich unwiderruflich löschen?',
       onConfirm: async () => {
         try {
           await api.deleteActivity(activityId);
@@ -1914,6 +1916,30 @@ const SAPBasisPlanner = () => {
               ...l,
               sids: l.sids.map(s =>
                 s.id === sidId ? { ...s, activities: s.activities.filter(a => a.id !== activityId) } : s
+              )
+            } : l
+          ));
+        } catch (error) {
+          alert('Fehler: ' + error.message);
+        }
+      }
+    });
+  };
+
+  const archiveActivity = async (landscapeId, sidId, activityId) => {
+    if (!canEdit) return;
+    setDeleteConfirm({
+      isOpen: true,
+      title: 'Aktivität archivieren',
+      message: 'Möchten Sie diese Aktivität wirklich archivieren? Sie wird dadurch im Plan eingefroren.',
+      onConfirm: async () => {
+        try {
+          await api.archiveActivity(activityId);
+          setLandscapes(landscapes.map(l =>
+            l.id === landscapeId ? {
+              ...l,
+              sids: l.sids.map(s =>
+                s.id === sidId ? { ...s, activities: s.activities.map(a => a.id === activityId ? { ...a, status: 'ARCHIVED' } : a) } : s
               )
             } : l
           ));
@@ -1988,16 +2014,18 @@ const SAPBasisPlanner = () => {
   };
 
   const updateActivity = async (landscapeId, sidId, activityId, field, value) => {
+    const landscape = landscapes.find(l => l.id === landscapeId);
+    const sid = landscape?.sids.find(s => s.id === sidId);
+    const activity = sid?.activities.find(a => a.id === activityId);
+    
     if (!canEdit) return;
+    if (activity && activity.status && activity.status !== 'PLANNED') return; // Cannot edit archived/completed tasks
+
     if (field === 'teamMemberId' && value) value = parseInt(value, 10);
     if (field === 'duration') value = parseInt(value) >= 0 ? parseInt(value) : 1;
 
     const apiFieldMap = { type: 'type_id', startDate: 'start_date', includesWeekend: 'includes_weekend', teamMemberId: 'team_member_id', startTime: 'start_time', endTime: 'end_time' };
     const apiField = apiFieldMap[field] || field;
-
-    const landscape = landscapes.find(l => l.id === landscapeId);
-    const sid = landscape?.sids.find(s => s.id === sidId);
-    const activity = sid?.activities.find(a => a.id === activityId);
 
     if (activity) {
       if (field === 'startTime' && value && activity.end_time && value > activity.end_time) return;
@@ -2107,17 +2135,19 @@ const SAPBasisPlanner = () => {
   };
 
   const updateSubActivity = async (landscapeId, sidId, activityId, subActivityId, field, value) => {
+    const landscape = landscapes.find(l => l.id === landscapeId);
+    const sid = landscape?.sids.find(s => s.id === sidId);
+    const activity = sid?.activities.find(a => a.id === activityId);
+    const subActivity = activity?.subActivities?.find(sub => sub.id === subActivityId);
+
     if (!canEdit) return;
+    if (subActivity && subActivity.status && subActivity.status !== 'PLANNED') return; // Cannot edit
+
     if (field === 'teamMemberId' && value) value = parseInt(value, 10);
     if (field === 'duration') value = parseInt(value) >= 0 ? parseInt(value) : 1;
 
     const apiFieldMap = { name: 'name', startDate: 'start_date', includesWeekend: 'includes_weekend', teamMemberId: 'team_member_id', startTime: 'start_time', endTime: 'end_time' };
     const apiField = apiFieldMap[field] || field;
-
-    const landscape = landscapes.find(l => l.id === landscapeId);
-    const sid = landscape?.sids.find(s => s.id === sidId);
-    const activity = sid?.activities.find(a => a.id === activityId);
-    const subActivity = activity?.subActivities?.find(sub => sub.id === subActivityId);
 
     if (subActivity) {
       if (field === 'startTime' && value && subActivity.end_time && value > subActivity.end_time) return;
@@ -2180,7 +2210,7 @@ const SAPBasisPlanner = () => {
     setDeleteConfirm({
       isOpen: true,
       title: 'Sub-Aktivität löschen',
-      message: 'Sub-Aktivität wirklich löschen?',
+      message: 'Sub-Aktivität wirklich unwiderruflich löschen?',
       onConfirm: async () => {
         try {
           await api.deleteSubActivity(subActivityId);
@@ -2189,12 +2219,36 @@ const SAPBasisPlanner = () => {
               ...l,
               sids: l.sids.map(s =>
                 s.id === sidId ? {
-                  ...s,
-                  activities: s.activities.map(a =>
-                    a.id === activityId ? {
-                      ...a,
-                      subActivities: (a.subActivities || []).filter(sub => sub.id !== subActivityId)
-                    } : a
+                  ...s, activities: s.activities.map(a =>
+                    a.id === activityId ? { ...a, subActivities: (a.subActivities || []).filter(sub => sub.id !== subActivityId) } : a
+                  )
+                } : s
+              )
+            } : l
+          ));
+        } catch (error) {
+          alert('Fehler: ' + error.message);
+        }
+      }
+    });
+  };
+
+  const archiveSubActivity = async (landscapeId, sidId, activityId, subActivityId) => {
+    if (!canEdit) return;
+    setDeleteConfirm({
+      isOpen: true,
+      title: 'Sub-Aktivität archivieren',
+      message: 'Sub-Aktivität wirklich archivieren? Sie wird dadurch im Plan eingefroren.',
+      onConfirm: async () => {
+        try {
+          await api.archiveSubActivity(subActivityId);
+          setLandscapes(landscapes.map(l =>
+            l.id === landscapeId ? {
+              ...l,
+              sids: l.sids.map(s =>
+                s.id === sidId ? {
+                  ...s, activities: s.activities.map(a =>
+                    a.id === activityId ? { ...a, subActivities: (a.subActivities || []).map(sub => sub.id === subActivityId ? { ...sub, status: 'ARCHIVED' } : sub) } : a
                   )
                 } : s
               )
@@ -3076,7 +3130,7 @@ const SAPBasisPlanner = () => {
                               return (
                                 <div
                                   key={`${item.isSub ? 'sub-' : ''}${item.id}-${segIdx}`}
-                                  className="activity-bar absolute rounded text-xs text-white flex items-center justify-center cursor-pointer overflow-hidden"
+                                  className={`activity-bar absolute rounded text-xs text-white flex items-center justify-center cursor-pointer overflow-hidden ${item.status === 'ARCHIVED' ? 'opacity-40 grayscale pointer-events-none' : item.status === 'COMPLETED' ? 'opacity-[0.85]' : ''}`}
                                   style={{
                                     left: `${leftPct}%`,
                                     width: `${Math.max(widthPct, 0.5)}%`,
@@ -4069,9 +4123,18 @@ const SAPBasisPlanner = () => {
                                 </label>
                               )}
                               {canEdit && !isLockedByOther && (
-                                <button onClick={() => deleteActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200">
-                                  <TrashIcon />
-                                </button>
+                                <>
+                                  {(!activity.status || activity.status === 'PLANNED') && (
+                                    <button onClick={() => deleteActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200" title="Aktivität unwiderruflich löschen">
+                                      <TrashIcon />
+                                    </button>
+                                  )}
+                                  {activity.status === 'COMPLETED' && (
+                                    <button onClick={() => archiveActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-stone-200 text-stone-700 border border-stone-300 rounded hover:bg-stone-300 transition-colors shadow-sm" title="Aktivität archivieren (Einfrieren)">
+                                      📦
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
@@ -4169,7 +4232,14 @@ const SAPBasisPlanner = () => {
                                     )}
                                   </div>
                                   {canEdit && !isLockedByOther && (
-                                    <button onClick={() => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center"><TrashIcon /></button>
+                                    <>
+                                      {(!subActivity.status || subActivity.status === 'PLANNED') && (
+                                        <button onClick={() => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center hover:bg-red-100" title="Sub-Aktivität unwiderruflich löschen"><TrashIcon /></button>
+                                      )}
+                                      {subActivity.status === 'COMPLETED' && (
+                                        <button onClick={() => archiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm" title="Sub-Aktivität archivieren">📦</button>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                               </div>
