@@ -65,6 +65,9 @@ Wir nutzen zwei komplementäre Test-Ebenen:
 | **Aktivitäten** | Listen abrufen | Testet, ob der `activity-types` Endpunkt ein Array zurückgibt. |
 | **Settings** | Einstellungen | Prüft, ob die globalen App-Einstellungen korrekt geladen werden. |
 | **Cleanup** | Löschen | Verifiziert das Löschen einer Landschaft und damit verbundener SIDs. |
+| **Lifecycle** | Auto-COMPLETED | Prüft den automatischen Wechsel von PLANNED zu COMPLETED nach 24 Std. |
+| **Lifecycle** | Auto-ARCHIVED | Prüft den automatischen Wechsel von COMPLETED zu ARCHIVED nach 7 Tagen. |
+| **Lifecycle** | Manuelle Archivierung | Verifiziert PUT Endpunkte für Aktivitäten, Sub-Aktivitäten & Serien. |
 
 ### E2E Browser (`tests/e2e/system-type.spec.js`)
 
@@ -73,6 +76,9 @@ Wir nutzen zwei komplementäre Test-Ebenen:
 | **Gantt UI** | Badge-Rendering | Loggt sich ein und prüft, ob im Gantt-Sidebar die farbigen Typ-Badges (PRD, QAS, etc.) erscheinen. |
 | **Settings UI** | Dropdown-Sichtbarkeit | Navigiert in den Editor und prüft, ob die Systemtyp-Auswahlboxen vorhanden sind. |
 | **Browser API** | Persistenz-Check | Nutzt den Browser-Context für einen API-Call, der die Typ-Zugehörigkeit aller SIDs verifiziert. |
+| **Gantt UI** | Archiv-Darstellung | Prüft, ob archivierte Termine als ausgegraut (Grayscale) und transparent angezeigt werden. |
+| **Termin-Editor** | Archiv-Icon (📦) | Verifiziert, dass COMPLETED Termine den Archiv-Button anstelle des Löschen-Buttons anzeigen. |
+| **Termin-Editor** | Bearbeitungs-Sperre | Stellt sicher, dass Input-Felder (Datum, Zeit, etc.) bei alten Terminen auf \`disabled\` gesetzt sind. |
 
 ---
 
