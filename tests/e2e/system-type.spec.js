@@ -13,23 +13,22 @@
 const { test, expect } = require('@playwright/test');
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3232/sap-planner.html';
-// The teamlead password is sourced from the .env file (TEAMLEAD_PASSWORD).
-// Override with TEST_USER / TEST_PASS env vars for a different user.
-const TEST_USER = process.env.TEST_USER || 'teamlead';
-const TEST_PASS = process.env.TEST_PASS || process.env.TEAMLEAD_PASSWORD;
+// Credentials are read from .env (variables: 'user' and 'Password')
+// Override with TEST_USER / TEST_PASS for a different account.
+const TEST_USER = process.env.TEST_USER || process.env.user || 'teamlead';
+const TEST_PASS = process.env.TEST_PASS || process.env.Password;
 
 // Skip all E2E tests if credentials are not provided
 test.beforeAll(async () => {
   if (!TEST_PASS) {
     console.warn(
-      '\nSKIPPING E2E tests: Set TEAMLEAD_PASSWORD in your .env file, or ' +
-      'set TEST_USER + TEST_PASS for a different account.\n'
+      '\nSKIPPING E2E tests: Ensure your .env file contains the "Password" variable.\n'
     );
   }
 });
 
 test.describe('System Type Dropdown', () => {
-  test.skip(!TEST_PASS, 'TEAMLEAD_PASSWORD not set in .env');
+  test.skip(!TEST_PASS, '"Password" variable not found in .env');
 
   test.beforeEach(async ({ page }) => {
     await page.goto(BASE_URL);
