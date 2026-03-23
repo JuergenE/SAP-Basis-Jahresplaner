@@ -1166,7 +1166,8 @@ app.get('/api/landscapes', authenticate, (req, res) => {
               team_member_id: sa.team_member_id || null,
               teamMemberId: sa.team_member_id || null,
               start_time: sa.start_time || null,
-              end_time: sa.end_time || null
+              end_time: sa.end_time || null,
+              status: sa.status
             }))
           };
         }),

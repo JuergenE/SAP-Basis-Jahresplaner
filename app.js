@@ -3568,7 +3568,7 @@ const SAPBasisPlanner = () => {
             const labelStr = item.isSub ? item.name : actType?.label;
             return /*#__PURE__*/React.createElement("div", {
               key: `${item.isSub ? 'sub-' : ''}${item.id}-${segIdx}`,
-              className: `activity-bar absolute rounded text-xs text-white flex items-center justify-center cursor-pointer overflow-hidden ${item.status === 'ARCHIVED' ? 'opacity-40 grayscale pointer-events-none' : item.status === 'COMPLETED' ? 'opacity-[0.85]' : ''}`,
+              className: `activity-bar absolute rounded text-xs text-white flex items-center justify-center cursor-pointer overflow-hidden ${item.status === 'ARCHIVED' ? 'opacity-40 grayscale pointer-events-none' : item.status === 'COMPLETED' ? 'opacity-80' : ''}`,
               style: {
                 left: `${leftPct}%`,
                 width: `${Math.max(widthPct, 0.5)}%`,
