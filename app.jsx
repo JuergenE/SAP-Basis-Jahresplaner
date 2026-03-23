@@ -1090,8 +1090,7 @@ const SAPBasisPlanner = () => {
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
 
-  // --- Drag-to-Scroll State & Handlers (uses scrollContainerRef) ---
-  const scrollContainerRef = useRef(null);
+  // --- Drag-to-Scroll State & Handlers ---
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [startY, setStartY] = useState(0);
@@ -1102,15 +1101,15 @@ const SAPBasisPlanner = () => {
     // Prevent dragging on interactive elements
     const tag = e.target.tagName;
     if (['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA', 'LABEL', 'A'].includes(tag)) return;
+    // Prevent if clicking on SVG icons inside buttons
     if (e.target.closest('button')) return;
-    if (e.button !== 0) return;
-    if (!scrollContainerRef.current) return;
+    if (e.button !== 0) return; // Only left-click
 
     setIsDragging(true);
     setStartX(e.clientX);
     setStartY(e.clientY);
-    setScrollLeft(scrollContainerRef.current.scrollLeft);
-    setScrollTop(scrollContainerRef.current.scrollTop);
+    setScrollLeft(window.scrollX);
+    setScrollTop(window.scrollY);
   };
 
   const handleMouseLeave = () => {
@@ -1122,12 +1121,11 @@ const SAPBasisPlanner = () => {
   };
 
   const handleMouseMove = (e) => {
-    if (!isDragging || !scrollContainerRef.current) return;
+    if (!isDragging) return;
     e.preventDefault();
-    const walkX = (e.clientX - startX) * 1.5;
+    const walkX = (e.clientX - startX) * 1.5; // Drag speed multiplier
     const walkY = (e.clientY - startY) * 1.5;
-    scrollContainerRef.current.scrollLeft = scrollLeft - walkX;
-    scrollContainerRef.current.scrollTop = scrollTop - walkY;
+    window.scrollTo(scrollLeft - walkX, scrollTop - walkY);
   };
 
   // Check permissions
@@ -2810,7 +2808,13 @@ const SAPBasisPlanner = () => {
     const sliderMax = maxOffset;
 
     return (
-      <div className="bg-white rounded-lg shadow-lg p-4 mb-6">
+      <div 
+        className={`bg-white rounded-lg shadow-lg p-4 mb-6 overflow-hidden ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onMouseMove={handleMouseMove}
+      >
         <h2 className="text-xl font-bold mb-4">Gantt-Chart {year}</h2>
 
         {/* Navigation Controls */}
@@ -2868,15 +2872,7 @@ const SAPBasisPlanner = () => {
           </button>
         </div>
 
-        <div
-          ref={scrollContainerRef}
-          className={`overflow-auto ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
-          onMouseMove={handleMouseMove}
-        >
-          <div className="min-w-max">
+        <div className="min-w-max">
           {/* Header Row */}
           <div className="flex border-b-2 border-gray-300 mb-2">
             <div className="gantt-row-label min-w-48 font-semibold p-2 bg-gray-50">
@@ -3225,7 +3221,6 @@ const SAPBasisPlanner = () => {
               </div>
             );
           })}
-        </div>
         </div>
       </div>
     );
