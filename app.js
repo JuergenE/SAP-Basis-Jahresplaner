@@ -1504,6 +1504,9 @@ const SeriesPopupEditor = ({
     onClick: () => handleArchiveOcc(occ.id),
     className: "w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm",
     title: "Termin archivieren"
+  }, "\uD83D\uDCE6"), occ.status === 'ARCHIVED' && /*#__PURE__*/React.createElement("div", {
+    className: "w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale",
+    title: "Archiviert"
   }, "\uD83D\uDCE6")))))))) : /*#__PURE__*/React.createElement("div", {
     className: "text-center py-6 text-gray-500 dark:text-gray-400"
   }, "Keine Termine vorhanden. Klicken Sie auf \"Generieren\" oder f\xFCgen Sie manuell Termine hinzu."), /*#__PURE__*/React.createElement("div", {
@@ -1634,6 +1637,41 @@ const SAPBasisPlanner = () => {
   const [bPendingDelete, setBPendingDelete] = useState(null); // mondayISO of week pending deletion
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
+
+  // --- Drag-to-Scroll State & Handlers (uses scrollContainerRef) ---
+  const scrollContainerRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [startX, setStartX] = useState(0);
+  const [startY, setStartY] = useState(0);
+  const [scrollLeft, setScrollLeft] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const handleMouseDown = e => {
+    // Prevent dragging on interactive elements
+    const tag = e.target.tagName;
+    if (['BUTTON', 'SELECT', 'INPUT', 'TEXTAREA', 'LABEL', 'A'].includes(tag)) return;
+    // Prevent if clicking on SVG icons inside buttons
+    if (e.target.closest('button')) return;
+    if (e.button !== 0) return; // Only left-click
+
+    setIsDragging(true);
+    setStartX(e.clientX);
+    setStartY(e.clientY);
+    setScrollLeft(window.scrollX);
+    setScrollTop(window.scrollY);
+  };
+  const handleMouseLeave = () => {
+    setIsDragging(false);
+  };
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+  const handleMouseMove = e => {
+    if (!isDragging) return;
+    e.preventDefault();
+    const walkX = (e.clientX - startX) * 1.5; // Drag speed multiplier
+    const walkY = (e.clientY - startY) * 1.5;
+    window.scrollTo(scrollLeft - walkX, scrollTop - walkY);
+  };
 
   // Check permissions
   // canEdit: Admin OR Teamlead can edit landscapes, SIDs, activities
@@ -3267,7 +3305,11 @@ const SAPBasisPlanner = () => {
     // Use maxOffset for slider (already calculated above)
     const sliderMax = maxOffset;
     return /*#__PURE__*/React.createElement("div", {
-      className: "bg-white rounded-lg shadow-lg p-4 mb-6 overflow-hidden"
+      className: `bg-white rounded-lg shadow-lg p-4 mb-6 overflow-hidden ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`,
+      onMouseDown: handleMouseDown,
+      onMouseUp: handleMouseUp,
+      onMouseLeave: handleMouseLeave,
+      onMouseMove: handleMouseMove
     }, /*#__PURE__*/React.createElement("h2", {
       className: "text-xl font-bold mb-4"
     }, "Gantt-Chart ", year), /*#__PURE__*/React.createElement("div", {
@@ -3303,7 +3345,12 @@ const SAPBasisPlanner = () => {
       className: `px-3 py-1 rounded text-sm transition-colors ${isTodayInRange ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'}`,
       title: isTodayInRange ? "Heute anzeigen" : "Heute liegt nicht im gewählten Zeitraum"
     }, "Heute")), /*#__PURE__*/React.createElement("div", {
-      className: "min-w-max"
+      ref: scrollContainerRef,
+      className: `min-w-max overflow-auto ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`,
+      onMouseDown: handleMouseDown,
+      onMouseUp: handleMouseUp,
+      onMouseLeave: handleMouseLeave,
+      onMouseMove: handleMouseMove
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex border-b-2 border-gray-300 mb-2"
     }, /*#__PURE__*/React.createElement("div", {
@@ -4372,8 +4419,8 @@ const SAPBasisPlanner = () => {
           type: "date",
           value: activity.startDate,
           onChange: e => updateActivity(landscape.id, sid.id, activity.id, 'startDate', e.target.value),
-          disabled: !canEdit || isLockedByOther,
-          className: `px-2 py-1 border border-gray-300 rounded text-sm ${!canEdit || isLockedByOther ? 'bg-gray-100' : ''}`
+          disabled: !canEdit || isLockedByOther || activity.status && activity.status !== 'PLANNED',
+          className: `px-2 py-1 border border-gray-300 rounded text-sm ${!canEdit || isLockedByOther || activity.status && activity.status !== 'PLANNED' ? 'bg-gray-100' : ''}`
         })), /*#__PURE__*/React.createElement("div", {
           className: "flex items-center gap-1"
         }, /*#__PURE__*/React.createElement("span", {
@@ -4386,8 +4433,8 @@ const SAPBasisPlanner = () => {
           min: "0",
           value: activity.duration,
           onChange: e => updateActivity(landscape.id, sid.id, activity.id, 'duration', parseInt(e.target.value) >= 0 ? parseInt(e.target.value) : 0),
-          disabled: !canEdit || isLockedByOther,
-          className: `px-2 py-1 border border-gray-300 rounded w-16 text-sm ${!canEdit || isLockedByOther ? 'bg-gray-100' : ''}`
+          disabled: !canEdit || isLockedByOther || activity.status && activity.status !== 'PLANNED',
+          className: `px-2 py-1 border border-gray-300 rounded w-16 text-sm ${!canEdit || isLockedByOther || activity.status && activity.status !== 'PLANNED' ? 'bg-gray-100' : ''}`
         })), /*#__PURE__*/React.createElement("div", {
           className: "text-sm text-gray-600"
         }, "Ende: ", /*#__PURE__*/React.createElement("span", {
@@ -4427,13 +4474,13 @@ const SAPBasisPlanner = () => {
           className: "text-sm text-gray-600"
         }, "\uD83D\uDC64"), hasSubActivities ? /*#__PURE__*/React.createElement("span", {
           className: "text-sm font-medium px-2 py-0.5 bg-gray-200 rounded border border-gray-300"
-        }, subActivityTeamMembers.length === 0 ? '-' : isSingleUserAcrossSubs && singleUserAbbr ? singleUserAbbr : 'Multi') : !canEdit || isLockedByOther ? /*#__PURE__*/React.createElement("span", {
+        }, subActivityTeamMembers.length === 0 ? '-' : isSingleUserAcrossSubs && singleUserAbbr ? singleUserAbbr : 'Multi') : !canEdit || isLockedByOther || activity.status && activity.status !== 'PLANNED' ? /*#__PURE__*/React.createElement("span", {
           className: "px-2 py-1 border border-gray-300 rounded text-sm w-full bg-gray-50 text-gray-700 min-h-[28px] flex items-center"
         }, activity.teamMemberId ? teamMembers.find(m => m.id === parseInt(activity.teamMemberId))?.abbreviation || '-' : '-') : /*#__PURE__*/React.createElement("select", {
           name: "autoField_9",
           value: activity.teamMemberId || '',
           onChange: e => updateActivity(landscape.id, sid.id, activity.id, 'teamMemberId', e.target.value || null),
-          disabled: isLockedByOther,
+          disabled: isLockedByOther || activity.status && activity.status !== 'PLANNED',
           className: "px-2 py-1 border border-gray-300 rounded text-sm w-full"
         }, /*#__PURE__*/React.createElement("option", {
           value: ""
@@ -4458,6 +4505,9 @@ const SAPBasisPlanner = () => {
           onClick: () => archiveActivity(landscape.id, sid.id, activity.id),
           className: "flex items-center justify-center w-8 h-8 bg-stone-200 text-stone-700 border border-stone-300 rounded hover:bg-stone-300 transition-colors shadow-sm",
           title: "Aktivit\xE4t archivieren (Einfrieren)"
+        }, "\uD83D\uDCE6"), activity.status === 'ARCHIVED' && /*#__PURE__*/React.createElement("div", {
+          className: "flex items-center justify-center w-8 h-8 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded cursor-not-allowed shadow-none grayscale",
+          title: "Archiviert"
         }, "\uD83D\uDCE6")))), activity.type === 'update' && canEdit && !isLockedByOther && /*#__PURE__*/React.createElement("div", {
           className: "flex items-center gap-2 mt-2 ml-4"
         }, /*#__PURE__*/React.createElement("button", {
@@ -4542,13 +4592,13 @@ const SAPBasisPlanner = () => {
           className: "flex items-center gap-1 w-[110px] justify-center"
         }, /*#__PURE__*/React.createElement("span", {
           className: "text-sm text-gray-600"
-        }, "\uD83D\uDC64"), !canEdit || isLockedByOther ? /*#__PURE__*/React.createElement("span", {
+        }, "\uD83D\uDC64"), !canEdit || isLockedByOther || subActivity.status && subActivity.status !== 'PLANNED' ? /*#__PURE__*/React.createElement("span", {
           className: "px-2 py-1 border border-gray-300 rounded text-sm w-full bg-gray-50 text-gray-700 min-h-[28px] flex items-center"
         }, subActivity.teamMemberId ? teamMembers.find(m => m.id === parseInt(subActivity.teamMemberId))?.abbreviation || '-' : '-') : /*#__PURE__*/React.createElement("select", {
           name: "autoField_16",
           value: subActivity.teamMemberId || '',
           onChange: e => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'teamMemberId', e.target.value || null),
-          disabled: isLockedByOther,
+          disabled: isLockedByOther || subActivity.status && subActivity.status !== 'PLANNED',
           className: "px-2 py-1 border border-gray-300 rounded text-sm w-full"
         }, /*#__PURE__*/React.createElement("option", {
           value: ""
@@ -4563,6 +4613,9 @@ const SAPBasisPlanner = () => {
           onClick: () => archiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id),
           className: "w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm",
           title: "Sub-Aktivit\xE4t archivieren"
+        }, "\uD83D\uDCE6"), subActivity.status === 'ARCHIVED' && /*#__PURE__*/React.createElement("div", {
+          className: "w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale",
+          title: "Archiviert"
         }, "\uD83D\uDCE6")))))));
       }), !collapsedSids.has(sid.id) && (sid.series || []).map(series => {
         const seriesType = activityTypes.find(t => t.id === series.typeId);
