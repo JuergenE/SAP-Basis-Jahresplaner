@@ -24,3 +24,8 @@ data/
 build-tmp/
 my-cache/
 npm-cache/
+
+# Test artifacts
+test-results/
+playwright-report/
+jest-results.json
