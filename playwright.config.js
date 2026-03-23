@@ -1,4 +1,14 @@
 import { defineConfig, devices } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+
+// Load .env file from project root if it exists
+const envPath = path.resolve('.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+}
+
 
 /**
  * Playwright E2E Configuration
@@ -19,8 +29,6 @@ export default defineConfig({
 
   use: {
     baseURL: 'http://localhost:3232',
-    // Use the main HTML entry point
-    navigationStart: 'http://localhost:3232/sap-planner.html',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -41,6 +49,8 @@ export default defineConfig({
     env: {
       PORT: '3232',
       NODE_ENV: 'development',
+      // Pass through any DB_PATH from .env
+      ...(process.env.DB_PATH ? { DB_PATH: process.env.DB_PATH } : {}),
     }
   },
 });

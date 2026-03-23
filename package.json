@@ -36,8 +36,10 @@
     },
     "devDependencies": {
         "@babel/cli": "^7.28.6",
+        "@babel/preset-env": "^7.29.2",
         "@babel/preset-react": "^7.28.5",
         "@jest/globals": "^30.3.0",
+        "@playwright/test": "^1.58.2",
         "@tailwindcss/cli": "^4.2.1",
         "jest": "^30.3.0",
         "supertest": "^7.2.2",
