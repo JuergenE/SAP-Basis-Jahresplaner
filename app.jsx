@@ -955,6 +955,9 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
                           {occ.status === 'COMPLETED' && (
                             <button onClick={() => handleArchiveOcc(occ.id)} className="w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm" title="Termin archivieren">📦</button>
                           )}
+                          {occ.status === 'ARCHIVED' && (
+                            <div className="w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale" title="Archiviert">📦</div>
+                          )}
                         </>
                       )}
                     </td>
@@ -4153,6 +4156,11 @@ const SAPBasisPlanner = () => {
                                       📦
                                     </button>
                                   )}
+                                  {activity.status === 'ARCHIVED' && (
+                                    <div className="flex items-center justify-center w-8 h-8 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded cursor-not-allowed shadow-none grayscale" title="Archiviert">
+                                      📦
+                                    </div>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -4257,6 +4265,9 @@ const SAPBasisPlanner = () => {
                                       )}
                                       {subActivity.status === 'COMPLETED' && (
                                         <button onClick={() => archiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm" title="Sub-Aktivität archivieren">📦</button>
+                                      )}
+                                      {subActivity.status === 'ARCHIVED' && (
+                                        <div className="w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale" title="Archiviert">📦</div>
                                       )}
                                     </>
                                   )}

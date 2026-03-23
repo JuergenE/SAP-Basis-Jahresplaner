@@ -674,7 +674,7 @@ const autoUpdateActivityStatuses = () => {
       UPDATE activities 
       SET status = 'COMPLETED' 
       WHERE status = 'PLANNED' 
-      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
     `);
     const resCompleted = stmtCompleted.run(completedStr);
 
@@ -682,7 +682,7 @@ const autoUpdateActivityStatuses = () => {
       UPDATE sub_activities 
       SET status = 'COMPLETED' 
       WHERE status = 'PLANNED' 
-      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
     `);
     stmtSubCompleted.run(completedStr);
 
@@ -699,7 +699,7 @@ const autoUpdateActivityStatuses = () => {
       UPDATE activities 
       SET status = 'ARCHIVED' 
       WHERE status = 'COMPLETED' 
-      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
     `);
     const resArchived = stmtArchived.run(archivedStr);
 
@@ -707,7 +707,7 @@ const autoUpdateActivityStatuses = () => {
       UPDATE sub_activities 
       SET status = 'ARCHIVED' 
       WHERE status = 'COMPLETED' 
-      AND date(start_date, '+' || (duration - 1) || ' days') <= ?
+      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
     `);
     stmtSubArchived.run(archivedStr);
 
