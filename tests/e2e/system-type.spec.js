@@ -17,10 +17,10 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3232/sap-planner.html';
-// Credentials are read from .env (variables: 'user' and 'Password')
+// Credentials are read from .env (variables: 'user' and 'password')
 // Override with TEST_USER / TEST_PASS for a different account.
 const TEST_USER = process.env.TEST_USER || process.env.user || 'teamlead';
-const TEST_PASS = process.env.TEST_PASS || process.env.Password;
+const TEST_PASS = process.env.TEST_PASS || process.env.password;
 
 // Skip all E2E tests if credentials are not provided
 test.beforeAll(async () => {
