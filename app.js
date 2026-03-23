@@ -1414,10 +1414,13 @@ const SeriesPopupEditor = ({
     className: "text-sm text-gray-600 dark:text-gray-400"
   }, "Bis:"), /*#__PURE__*/React.createElement(TimePicker, {
     value: localDefaults.endTime,
-    onChange: v => setLocalDefaults(prev => ({
-      ...prev,
-      endTime: v
-    }))
+    onChange: v => {
+      if (v && localDefaults.startTime && v <= localDefaults.startTime) return;
+      setLocalDefaults(prev => ({
+        ...prev,
+        endTime: v
+      }));
+    }
   }), /*#__PURE__*/React.createElement("span", {
     className: "text-sm text-gray-600 dark:text-gray-400"
   }, "\uD83D\uDC64"), /*#__PURE__*/React.createElement("select", {
@@ -1473,7 +1476,10 @@ const SeriesPopupEditor = ({
     className: "py-1 px-1"
   }, /*#__PURE__*/React.createElement(TimePicker, {
     value: occ.end_time || '',
-    onChange: v => handleUpdateOcc(occ.id, 'end_time', v),
+    onChange: v => {
+      if (v && occ.start_time && v <= occ.start_time) return;
+      handleUpdateOcc(occ.id, 'end_time', v);
+    },
     disabled: !canEdit || occ.status && occ.status !== 'PLANNED'
   })), /*#__PURE__*/React.createElement("td", {
     className: "py-1 px-1 text-center"
