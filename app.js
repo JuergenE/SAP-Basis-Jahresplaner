@@ -1,3 +1,5 @@
+"use strict";
+
 const {
   useState,
   useEffect,
@@ -1475,9 +1477,9 @@ const SeriesPopupEditor = ({
     className: "flex gap-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: handleAddOcc,
-    className: "px-3 py-1.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800 rounded text-sm hover:bg-blue-200 dark:hover:bg-blue-900/50 font-medium transition-colors"
+    className: "px-3 py-1.5 bg-purple-600 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-600 text-white rounded text-sm font-medium transition-colors"
   }, "+ Termin hinzuf\xFCgen"), /*#__PURE__*/React.createElement("label", {
-    className: "cursor-pointer px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border border-purple-300 dark:border-purple-800 rounded text-sm hover:bg-purple-200 dark:hover:bg-purple-900/50 font-medium transition-colors flex items-center justify-center"
+    className: "cursor-pointer px-3 py-1.5 bg-purple-600 hover:bg-purple-700 dark:bg-purple-700 dark:hover:bg-purple-600 text-white rounded text-sm font-medium transition-colors flex items-center justify-center"
   }, "+ CSV Upload", /*#__PURE__*/React.createElement("input", {
     type: "file",
     accept: ".csv",
