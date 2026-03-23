@@ -1090,7 +1090,8 @@ const SAPBasisPlanner = () => {
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
 
-  // --- Drag-to-Scroll State & Handlers ---
+  // --- Drag-to-Scroll State & Handlers (uses scrollContainerRef) ---
+  const scrollContainerRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [startY, setStartY] = useState(0);
@@ -2872,7 +2873,14 @@ const SAPBasisPlanner = () => {
           </button>
         </div>
 
-        <div className="min-w-max">
+        <div
+          ref={scrollContainerRef}
+          className={`min-w-max overflow-auto ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseLeave}
+          onMouseMove={handleMouseMove}
+        >
           {/* Header Row */}
           <div className="flex border-b-2 border-gray-300 mb-2">
             <div className="gantt-row-label min-w-48 font-semibold p-2 bg-gray-50">
