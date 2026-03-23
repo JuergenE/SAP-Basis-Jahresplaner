@@ -78,7 +78,8 @@ Wir nutzen zwei komplementäre Test-Ebenen:
 | **Browser API** | Persistenz-Check | Nutzt den Browser-Context für einen API-Call, der die Typ-Zugehörigkeit aller SIDs verifiziert. |
 | **Gantt UI** | Archiv-Darstellung | Prüft, ob archivierte Termine als ausgegraut (Grayscale) und transparent angezeigt werden. |
 | **Termin-Editor** | Archiv-Icon (📦) | Verifiziert, dass COMPLETED Termine den Archiv-Button anstelle des Löschen-Buttons anzeigen. |
-| **Termin-Editor** | Bearbeitungs-Sperre | Stellt sicher, dass Input-Felder (Datum, Zeit, etc.) bei alten Terminen auf \`disabled\` gesetzt sind. |
+| **Termin-Editor** | Bearbeitungs-Sperre | Stellt sicher, dass Input-Felder (Datum, Zeit, etc.) bei alten Terminen auf `disabled` gesetzt sind. |
+| **Termin-Editor** | Ressourcenzuweisung-Sperre | Verifiziert, dass das Dropdown zur Benutzerzuweisung bei archivierten Aufgaben als statischer Text gesperrt ist. |
 
 ---
 
