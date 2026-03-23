@@ -898,7 +898,10 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
             <span className="text-sm text-gray-600 dark:text-gray-400">Standard Von:</span>
             <TimePicker value={localDefaults.startTime} onChange={v => setLocalDefaults(prev => ({ ...prev, startTime: v }))} />
             <span className="text-sm text-gray-600 dark:text-gray-400">Bis:</span>
-            <TimePicker value={localDefaults.endTime} onChange={v => setLocalDefaults(prev => ({ ...prev, endTime: v }))} />
+            <TimePicker value={localDefaults.endTime} onChange={v => {
+              if (v && localDefaults.startTime && v <= localDefaults.startTime) return;
+              setLocalDefaults(prev => ({ ...prev, endTime: v }));
+            }} />
             <span className="text-sm text-gray-600 dark:text-gray-400">👤</span>
             <select value={localDefaults.teamMemberId} onChange={e => setLocalDefaults(prev => ({ ...prev, teamMemberId: e.target.value }))} className="px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm">
               <option value="">-</option>
@@ -933,7 +936,10 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
                       <TimePicker value={occ.start_time || ''} onChange={v => handleUpdateOcc(occ.id, 'start_time', v)} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} />
                     </td>
                     <td className="py-1 px-1">
-                      <TimePicker value={occ.end_time || ''} onChange={v => handleUpdateOcc(occ.id, 'end_time', v)} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} />
+                      <TimePicker value={occ.end_time || ''} onChange={v => {
+                        if (v && occ.start_time && v <= occ.start_time) return;
+                        handleUpdateOcc(occ.id, 'end_time', v);
+                      }} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} />
                     </td>
                     <td className="py-1 px-1 text-center">
                       <input type="checkbox" checked={!!occ.includesWeekend} onChange={e => handleUpdateOcc(occ.id, 'includes_weekend', e.target.checked)} disabled={!canEdit || (occ.status && occ.status !== 'PLANNED')} className="w-4 h-4 rounded border-gray-300" />
