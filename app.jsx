@@ -4060,8 +4060,8 @@ const SAPBasisPlanner = () => {
                                     type="date"
                                     value={activity.startDate}
                                     onChange={(e) => updateActivity(landscape.id, sid.id, activity.id, 'startDate', e.target.value)}
-                                    disabled={!canEdit || isLockedByOther}
-                                    className={`px-2 py-1 border border-gray-300 rounded text-sm ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
+                                    disabled={!canEdit || isLockedByOther || (activity.status && activity.status !== 'PLANNED')}
+                                    className={`px-2 py-1 border border-gray-300 rounded text-sm ${(!canEdit || isLockedByOther || (activity.status && activity.status !== 'PLANNED')) ? 'bg-gray-100' : ''}`}
                                   />
                                 )}
                               </div>
@@ -4075,8 +4075,8 @@ const SAPBasisPlanner = () => {
                                     min="0"
                                     value={activity.duration}
                                     onChange={(e) => updateActivity(landscape.id, sid.id, activity.id, 'duration', parseInt(e.target.value) >= 0 ? parseInt(e.target.value) : 0)}
-                                    disabled={!canEdit || isLockedByOther}
-                                    className={`px-2 py-1 border border-gray-300 rounded w-16 text-sm ${(!canEdit || isLockedByOther) ? 'bg-gray-100' : ''}`}
+                                    disabled={!canEdit || isLockedByOther || (activity.status && activity.status !== 'PLANNED')}
+                                    className={`px-2 py-1 border border-gray-300 rounded w-16 text-sm ${(!canEdit || isLockedByOther || (activity.status && activity.status !== 'PLANNED')) ? 'bg-gray-100' : ''}`}
                                   />
                                 )}
                               </div>
@@ -4117,7 +4117,7 @@ const SAPBasisPlanner = () => {
                                   <span className="text-sm font-medium px-2 py-0.5 bg-gray-200 rounded border border-gray-300">
                                     {subActivityTeamMembers.length === 0 ? '-' : (isSingleUserAcrossSubs && singleUserAbbr ? singleUserAbbr : 'Multi')}
                                   </span>
-                                ) : (!canEdit || isLockedByOther) ? (
+                                ) : (!canEdit || isLockedByOther || (activity.status && activity.status !== 'PLANNED')) ? (
                                   <span className="px-2 py-1 border border-gray-300 rounded text-sm w-full bg-gray-50 text-gray-700 min-h-[28px] flex items-center">
                                     {activity.teamMemberId ? (teamMembers.find(m => m.id === parseInt(activity.teamMemberId))?.abbreviation || '-') : '-'}
                                   </span>
@@ -4125,7 +4125,7 @@ const SAPBasisPlanner = () => {
                                   <select name="autoField_9"
                                     value={activity.teamMemberId || ''}
                                     onChange={(e) => updateActivity(landscape.id, sid.id, activity.id, 'teamMemberId', e.target.value || null)}
-                                    disabled={isLockedByOther}
+                                    disabled={isLockedByOther || (activity.status && activity.status !== 'PLANNED')}
                                     className="px-2 py-1 border border-gray-300 rounded text-sm w-full"
                                   >
                                     <option value="">-</option>
@@ -4242,7 +4242,7 @@ const SAPBasisPlanner = () => {
                                 <div className="flex items-center gap-2 ml-auto pl-2 border-l border-gray-200">
                                   <div className="flex items-center gap-1 w-[110px] justify-center">
                                     <span className="text-sm text-gray-600">👤</span>
-                                    {(!canEdit || isLockedByOther) ? (
+                                    {(!canEdit || isLockedByOther || (subActivity.status && subActivity.status !== 'PLANNED')) ? (
                                       <span className="px-2 py-1 border border-gray-300 rounded text-sm w-full bg-gray-50 text-gray-700 min-h-[28px] flex items-center">
                                         {subActivity.teamMemberId ? (teamMembers.find(m => m.id === parseInt(subActivity.teamMemberId))?.abbreviation || '-') : '-'}
                                       </span>
@@ -4250,7 +4250,7 @@ const SAPBasisPlanner = () => {
                                       <select name="autoField_16"
                                         value={subActivity.teamMemberId || ''}
                                         onChange={(e) => updateSubActivity(landscape.id, sid.id, activity.id, subActivity.id, 'teamMemberId', e.target.value || null)}
-                                        disabled={isLockedByOther}
+                                        disabled={isLockedByOther || (subActivity.status && subActivity.status !== 'PLANNED')}
                                         className="px-2 py-1 border border-gray-300 rounded text-sm w-full"
                                       >
                                         <option value="">-</option>
