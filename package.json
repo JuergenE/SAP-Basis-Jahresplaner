@@ -14,7 +14,7 @@
         "build:js": "babel app.jsx --out-file app.js --presets @babel/preset-react",
         "dev:js": "babel app.jsx --out-file app.js --presets @babel/preset-react --watch",
         "test:api": "NODE_ENV=test DB_PATH=:memory: jest --config jest.config.js --json --outputFile=jest-results.json",
-        "test:e2e": "playwright test",
+        "test:e2e": "npx playwright test",
         "test": "npm run test:api && npm run test:e2e"
     },
     "keywords": [
@@ -37,7 +37,10 @@
     "devDependencies": {
         "@babel/cli": "^7.28.6",
         "@babel/preset-react": "^7.28.5",
+        "@jest/globals": "^30.3.0",
         "@tailwindcss/cli": "^4.2.1",
+        "jest": "^30.3.0",
+        "supertest": "^7.2.2",
         "tailwindcss": "^4.2.1"
     }
 }
