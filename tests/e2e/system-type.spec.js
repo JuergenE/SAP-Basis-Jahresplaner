@@ -11,6 +11,10 @@
  */
 
 const { test, expect } = require('@playwright/test');
+const path = require('path');
+
+// Load .env from project root inside the worker process
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3232/sap-planner.html';
 // Credentials are read from .env (variables: 'user' and 'Password')
