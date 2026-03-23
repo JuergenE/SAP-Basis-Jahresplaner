@@ -2933,17 +2933,25 @@ const startHttp = () => {
   });
 };
 
-startServer();
 
-// Graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\nServer wird beendet...');
-  db.close();
-  process.exit(0);
-});
+if (process.env.NODE_ENV === 'test') {
+  // In test mode: initialize DB but don't start server.
+  // Tests import { app, db } and use supertest directly.
+  initDatabase();
+  module.exports = { app, db };
+} else {
+  startServer();
 
-process.on('SIGTERM', () => {
-  console.log('\nServer wird beendet...');
-  db.close();
-  process.exit(0);
-});
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('\nServer wird beendet...');
+    db.close();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    console.log('\nServer wird beendet...');
+    db.close();
+    process.exit(0);
+  });
+}

@@ -12,7 +12,10 @@
         "build:css": "npx @tailwindcss/cli -i ./input.css -o ./styles.css --minify",
         "dev:css": "npx @tailwindcss/cli -i ./input.css -o ./styles.css --watch",
         "build:js": "babel app.jsx --out-file app.js --presets @babel/preset-react",
-        "dev:js": "babel app.jsx --out-file app.js --presets @babel/preset-react --watch"
+        "dev:js": "babel app.jsx --out-file app.js --presets @babel/preset-react --watch",
+        "test:api": "NODE_ENV=test DB_PATH=:memory: jest --config jest.config.js --json --outputFile=jest-results.json",
+        "test:e2e": "playwright test",
+        "test": "npm run test:api && npm run test:e2e"
     },
     "keywords": [
         "sap",
