@@ -29,3 +29,8 @@ npm-cache/
 test-results/
 playwright-report/
 jest-results.json
+
+# GitHub API debug temp files
+runs.json
+jobs.json
+job_log.txt
