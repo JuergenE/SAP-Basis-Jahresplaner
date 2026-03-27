@@ -6087,7 +6087,7 @@ const SAPBasisPlanner = () => {
                             const dayISO = toISO(day);
                             const entries = urlaubByDate[dayISO] || [];
                             return (
-                              <td key={di} className={`text-center py-0.5 px-0 rounded relative ${di >= 5 ? 'text-red-400' : ''} ${!inMonth ? 'text-gray-300' : ''} ${isToday ? 'font-bold underline' : ''}`}>
+                              <td key={di} className={`text-center align-top py-0.5 px-0 rounded relative ${di >= 5 ? 'text-red-400' : ''} ${!inMonth ? 'text-gray-300' : ''} ${isToday ? 'font-bold underline' : ''}`}>
                                 <div className="flex flex-col items-center w-full overflow-hidden gap-0">
                                   <span className="leading-tight">{inMonth ? day.getDate() : ''}</span>
                                   {inMonth && entries.map((entry, ei) => {
