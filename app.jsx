@@ -1103,6 +1103,9 @@ const SAPBasisPlanner = () => {
   const [urlaub, setUrlaub] = useState([]);
   const [urlaubModal, setUrlaubModal] = useState(false);
   const [urlaubPendingDelete, setUrlaubPendingDelete] = useState(null);
+  const [urlaubModalStart, setUrlaubModalStart] = useState('');
+  const [urlaubModalEnd, setUrlaubModalEnd] = useState('');
+  const [urlaubModalUserId, setUrlaubModalUserId] = useState('');
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
 
@@ -6039,55 +6042,17 @@ const SAPBasisPlanner = () => {
             return userColors[idx % userColors.length];
           };
 
-          const UrlaubModal = () => {
-            const [modalStartDate, setModalStartDate] = useState('');
-            const [modalEndDate, setModalEndDate] = useState('');
-            const [modalUserId, setModalUserId] = useState(user?.role === 'teamlead' ? '' : String(user?.id));
-
-            const handleSubmit = async () => {
-              if (!modalStartDate || !modalEndDate) { alert('Bitte Start- und Enddatum angeben.'); return; }
-              if (modalEndDate < modalStartDate) { alert('Das Enddatum darf nicht vor dem Startdatum liegen.'); return; }
-              if (user?.role === 'teamlead' && !modalUserId) { alert('Bitte einen Mitarbeiter ausw\u00e4hlen.'); return; }
-              const targetUserId = modalUserId ? parseInt(modalUserId) : user?.id;
-              try {
-                const entry = await api.addUrlaub(modalStartDate, modalEndDate, targetUserId);
-                setUrlaub([...urlaub, entry]);
-                setUrlaubModal(false);
-              } catch (e) { alert(e.message); }
-            };
-
-            return (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setUrlaubModal(false)}>
-                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-                  <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">🏖️ Urlaub eintragen</h3>
-                  {user?.role === 'teamlead' && (
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Mitarbeiter</label>
-                      <select value={modalUserId} onChange={e => setModalUserId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm">
-                        <option value="">Bitte w\u00e4hlen</option>
-                        {users.filter(u => u.role !== 'viewer').map(u => (
-                          <option key={u.id} value={u.id}>{u.abbreviation || u.username}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Von</label>
-                      <input type="date" value={modalStartDate} onChange={e => { setModalStartDate(e.target.value); if (!modalEndDate || e.target.value > modalEndDate) setModalEndDate(e.target.value); }} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Bis</label>
-                      <input type="date" value={modalEndDate} min={modalStartDate} onChange={e => setModalEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm" />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-3">
-                    <button onClick={() => setUrlaubModal(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Abbrechen</button>
-                    <button onClick={handleSubmit} className="px-4 py-2 text-sm bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors">Speichern</button>
-                  </div>
-                </div>
-              </div>
-            );
+          const handleUrlaubSubmit = async () => {
+            if (!urlaubModalStart || !urlaubModalEnd) { alert('Bitte Start- und Enddatum angeben.'); return; }
+            if (urlaubModalEnd < urlaubModalStart) { alert('Das Enddatum darf nicht vor dem Startdatum liegen.'); return; }
+            if (user?.role === 'teamlead' && !urlaubModalUserId) { alert('Bitte einen Mitarbeiter auswählen.'); return; }
+            const targetUserId = urlaubModalUserId ? parseInt(urlaubModalUserId) : user?.id;
+            try {
+              const entry = await api.addUrlaub(urlaubModalStart, urlaubModalEnd, targetUserId);
+              setUrlaub([...urlaub, entry]);
+              setUrlaubModal(false);
+              setUrlaubModalStart(''); setUrlaubModalEnd(''); setUrlaubModalUserId(user?.role === 'teamlead' ? '' : String(user?.id));
+            } catch (e) { alert(e.message); }
           };
 
           const MonthCalendar = ({ y, m }) => {
@@ -6175,7 +6140,7 @@ const SAPBasisPlanner = () => {
                     </span>
                   </div>
                   {user?.role !== 'viewer' && (
-                    <button onClick={() => setUrlaubModal(true)} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm">
+                    <button onClick={() => { setUrlaubModalUserId(user?.role === 'teamlead' ? '' : String(user?.id)); setUrlaubModal(true); }} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm">
                       + Urlaub eintragen
                     </button>
                   )}
@@ -6217,7 +6182,38 @@ const SAPBasisPlanner = () => {
                   </div>
                 </div>
               )}
-              {urlaubModal && <UrlaubModal />}
+              {urlaubModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setUrlaubModal(false)}>
+                  <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                    <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">🏖️ Urlaub eintragen</h3>
+                    {user?.role === 'teamlead' && (
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Mitarbeiter</label>
+                        <select value={urlaubModalUserId} onChange={e => setUrlaubModalUserId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm">
+                          <option value="">Bitte wählen</option>
+                          {users.filter(u => u.role !== 'viewer').map(u => (
+                            <option key={u.id} value={u.id}>{u.abbreviation || u.username}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Von</label>
+                        <input type="date" value={urlaubModalStart} onChange={e => { setUrlaubModalStart(e.target.value); if (!urlaubModalEnd || e.target.value > urlaubModalEnd) setUrlaubModalEnd(e.target.value); }} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Bis</label>
+                        <input type="date" value={urlaubModalEnd} min={urlaubModalStart} onChange={e => setUrlaubModalEnd(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm" />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <button onClick={() => setUrlaubModal(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Abbrechen</button>
+                      <button onClick={handleUrlaubSubmit} className="px-4 py-2 text-sm bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors">Speichern</button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()
