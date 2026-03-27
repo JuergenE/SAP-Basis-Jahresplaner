@@ -236,6 +236,11 @@ class ApiClient {
   async getBereitschaft() { return this.request('/api/bereitschaft'); }
   async claimBereitschaft(week_start) { return this.request('/api/bereitschaft', { method: 'POST', body: JSON.stringify({ week_start }) }); }
   async deleteBereitschaft(week_start) { return this.request(`/api/bereitschaft/${week_start}`, { method: 'DELETE' }); }
+
+  // Urlaub (Vacation)
+  async getUrlaub() { return this.request('/api/urlaub'); }
+  async addUrlaub(start_date, end_date, user_id) { return this.request('/api/urlaub', { method: 'POST', body: JSON.stringify({ start_date, end_date, user_id }) }); }
+  async deleteUrlaub(id) { return this.request(`/api/urlaub/${id}`, { method: 'DELETE' }); }
 }
 
 const api = new ApiClient();
@@ -1093,6 +1098,11 @@ const SAPBasisPlanner = () => {
   const [bView, setBView] = useState('annual');
   const [bMonthIdx, setBMonthIdx] = useState(1);
   const [bPendingDelete, setBPendingDelete] = useState(null); // mondayISO of week pending deletion
+
+  // Urlaub (Vacation)
+  const [urlaub, setUrlaub] = useState([]);
+  const [urlaubModal, setUrlaubModal] = useState(false);
+  const [urlaubPendingDelete, setUrlaubPendingDelete] = useState(null);
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
 
@@ -1145,7 +1155,7 @@ const SAPBasisPlanner = () => {
   // Load data from API
   const loadData = useCallback(async () => {
     try {
-      const [settings, types, lands, sundays, members, matrix, trns, bereitschaftList, initialUsers] = await Promise.all([
+      const [settings, types, lands, sundays, members, matrix, trns, bereitschaftList, initialUsers, urlaubList] = await Promise.all([
         api.getSettings(),
         api.getActivityTypes(),
         api.getLandscapes(),
@@ -1154,7 +1164,8 @@ const SAPBasisPlanner = () => {
         api.getMatrix().catch(() => ({ columns: [], values: [] })),
         api.getTrainings().catch(() => []),
         api.getBereitschaft().catch(() => []),
-        api.getUsers().catch(() => [])
+        api.getUsers().catch(() => []),
+        api.getUrlaub().catch(() => [])
       ]);
 
       if (settings.year) setYear(parseInt(settings.year));
@@ -1167,6 +1178,7 @@ const SAPBasisPlanner = () => {
       setMatrixValues(matrix.values || []);
       setTrainings(trns || []);
       setBereitschaft(bereitschaftList || []);
+      setUrlaub(urlaubList || []);
       if (initialUsers && initialUsers.length > 0) setUsers(initialUsers);
 
       // Calculate endDate for all activities and sub-activities on load
@@ -3757,6 +3769,17 @@ const SAPBasisPlanner = () => {
               Bereitschaft
             </button>
           )}
+          {user?.role !== 'viewer' && (
+            <button
+              onClick={() => setActiveTab('urlaub')}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'urlaub'
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-100'
+                }`}
+            >
+              Urlaubsplanung
+            </button>
+          )}
           {user?.role === 'teamlead' && (
             <button
               onClick={() => setActiveTab('auswertung')}
@@ -5921,6 +5944,280 @@ const SAPBasisPlanner = () => {
                   })()}
                 </div>
               )}
+            </div>
+          );
+        })()
+      }
+
+      {/* ================================================================= */}
+      {/* Urlaubsplanung (Vacation Planning) Tab                           */}
+      {/* ================================================================= */}
+      {
+        activeTab === 'urlaub' && user?.role !== 'viewer' && (() => {
+          const getMonday = (d) => {
+            const date = new Date(d);
+            const day = date.getDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            date.setDate(date.getDate() + diff);
+            date.setHours(0, 0, 0, 0);
+            return date;
+          };
+
+          const toISO = (d) => {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${dd}`;
+          };
+
+          const urlaubByDate = {};
+          urlaub.forEach(u => {
+            let cur = new Date(u.start_date);
+            const end = new Date(u.end_date);
+            while (cur <= end) {
+              const key = toISO(cur);
+              if (!urlaubByDate[key]) urlaubByDate[key] = [];
+              urlaubByDate[key].push({ id: u.id, abbreviation: u.abbreviation || u.username, user_id: u.user_id });
+              cur.setDate(cur.getDate() + 1);
+            }
+          });
+
+          const months = [];
+          for (let m = -1; m <= 12; m++) {
+            const d = new Date(year, m, 1);
+            months.push({ year: d.getFullYear(), month: d.getMonth() });
+          }
+
+          const MONTH_NAMES = ['Januar', 'Februar', 'M\u00e4rz', 'April', 'Mai', 'Juni',
+            'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+          const DAY_LETTERS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+          const buildMonthWeeks = (y, m) => {
+            const firstDay = new Date(y, m, 1);
+            const lastDay = new Date(y, m + 1, 0);
+            const startMonday = getMonday(firstDay);
+            const weeks = [];
+            let cur = new Date(startMonday);
+            while (cur <= lastDay) {
+              const days = [];
+              for (let i = 0; i < 7; i++) {
+                days.push(new Date(cur));
+                cur.setDate(cur.getDate() + 1);
+              }
+              weeks.push({ monday: new Date(days[0]), days });
+            }
+            return weeks;
+          };
+
+          const handleDeleteUrlaub = async (entry) => {
+            const canDelete = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
+            if (!canDelete) return;
+            if (urlaubPendingDelete === entry.id) {
+              try {
+                await api.deleteUrlaub(entry.id);
+                setUrlaub(urlaub.filter(u => u.id !== entry.id));
+                setUrlaubPendingDelete(null);
+              } catch (e) { alert(e.message); }
+            } else {
+              setUrlaubPendingDelete(entry.id);
+            }
+          };
+
+          const userColors = [
+            { bg: 'bg-sky-500', text: 'text-white' },
+            { bg: 'bg-emerald-500', text: 'text-white' },
+            { bg: 'bg-amber-500', text: 'text-white' },
+            { bg: 'bg-rose-500', text: 'text-white' },
+            { bg: 'bg-violet-500', text: 'text-white' },
+            { bg: 'bg-teal-500', text: 'text-white' },
+            { bg: 'bg-orange-500', text: 'text-white' },
+            { bg: 'bg-pink-500', text: 'text-white' },
+          ];
+          const allUserIds = [...new Set(urlaub.map(u => u.user_id))];
+          const getUserColor = (userId) => {
+            const idx = allUserIds.indexOf(userId);
+            return userColors[idx % userColors.length];
+          };
+
+          const UrlaubModal = () => {
+            const [modalStartDate, setModalStartDate] = useState('');
+            const [modalEndDate, setModalEndDate] = useState('');
+            const [modalUserId, setModalUserId] = useState(user?.role === 'teamlead' ? '' : String(user?.id));
+
+            const handleSubmit = async () => {
+              if (!modalStartDate || !modalEndDate) { alert('Bitte Start- und Enddatum angeben.'); return; }
+              if (modalEndDate < modalStartDate) { alert('Das Enddatum darf nicht vor dem Startdatum liegen.'); return; }
+              if (user?.role === 'teamlead' && !modalUserId) { alert('Bitte einen Mitarbeiter ausw\u00e4hlen.'); return; }
+              const targetUserId = modalUserId ? parseInt(modalUserId) : user?.id;
+              try {
+                const entry = await api.addUrlaub(modalStartDate, modalEndDate, targetUserId);
+                setUrlaub([...urlaub, entry]);
+                setUrlaubModal(false);
+              } catch (e) { alert(e.message); }
+            };
+
+            return (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setUrlaubModal(false)}>
+                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                  <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-4">🏖️ Urlaub eintragen</h3>
+                  {user?.role === 'teamlead' && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Mitarbeiter</label>
+                      <select value={modalUserId} onChange={e => setModalUserId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm">
+                        <option value="">Bitte w\u00e4hlen</option>
+                        {users.filter(u => u.role !== 'viewer').map(u => (
+                          <option key={u.id} value={u.id}>{u.abbreviation || u.username}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Von</label>
+                      <input type="date" value={modalStartDate} onChange={e => { setModalStartDate(e.target.value); if (!modalEndDate || e.target.value > modalEndDate) setModalEndDate(e.target.value); }} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Bis</label>
+                      <input type="date" value={modalEndDate} min={modalStartDate} onChange={e => setModalEndDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm" />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button onClick={() => setUrlaubModal(false)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors">Abbrechen</button>
+                    <button onClick={handleSubmit} className="px-4 py-2 text-sm bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors">Speichern</button>
+                  </div>
+                </div>
+              </div>
+            );
+          };
+
+          const MonthCalendar = ({ y, m }) => {
+            const weeks = buildMonthWeeks(y, m);
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            return (
+              <div className="select-none">
+                <div className="text-center font-bold text-base mb-2 text-sky-500">
+                  {MONTH_NAMES[m]} {y}
+                </div>
+                <table className="w-full border-collapse text-xs table-fixed">
+                  <thead>
+                    <tr>
+                      <th className="text-center py-1 font-semibold w-[10%] text-gray-300 border-r border-gray-100">KW</th>
+                      {DAY_LETTERS.map((l, i) => (
+                        <th key={i} className={`text-center py-1 font-semibold w-[12.85%] ${i >= 5 ? 'text-red-400' : 'text-gray-500'}`}>{l}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {weeks.map((week, wi) => {
+                      const mondayISO = toISO(week.monday);
+                      const isThisWeek = toISO(getMonday(today)) === mondayISO;
+                      return (
+                        <tr key={wi} className="group">
+                          <td className={`text-center py-1 px-0.5 text-[9px] border-r border-gray-100 font-mono ${isThisWeek ? '!bg-amber-400 !text-amber-950 font-bold' : 'text-gray-300'}`}>
+                            {getISOWeekNumber(week.monday)}
+                          </td>
+                          {week.days.map((day, di) => {
+                            const inMonth = day.getMonth() === m;
+                            const isToday = toISO(day) === toISO(today);
+                            const dayISO = toISO(day);
+                            const entries = urlaubByDate[dayISO] || [];
+                            return (
+                              <td key={di} className={`text-center py-0.5 px-0 rounded relative ${di >= 5 ? 'text-red-400' : ''} ${!inMonth ? 'text-gray-300' : ''} ${isToday ? 'font-bold underline' : ''}`}>
+                                <div className="flex flex-col items-center min-h-[1.25rem] w-full overflow-hidden gap-0">
+                                  {entries.length > 0 ? (
+                                    entries.map((entry, ei) => {
+                                      const color = getUserColor(entry.user_id);
+                                      const canDel = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
+                                      return (
+                                        <span key={ei}
+                                          onClick={(e) => { e.stopPropagation(); if (canDel) handleDeleteUrlaub(entry); }}
+                                          className={`text-[8px] font-bold px-0.5 rounded shadow-sm truncate w-[95%] ${canDel ? 'cursor-pointer' : ''} ${urlaubPendingDelete === entry.id ? 'bg-red-600 text-white animate-pulse' : `${color.bg} ${color.text}`}`}
+                                          title={entry.abbreviation}
+                                        >
+                                          {urlaubPendingDelete === entry.id ? 'x' : entry.abbreviation}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span>{inMonth ? day.getDate() : ''}</span>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          };
+
+          return (
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme">
+              <div className="flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2">
+                <h2 className="text-2xl font-bold text-gray-800">🏖️ Urlaubsplanung {year}</h2>
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-2 text-xs items-center flex-wrap">
+                    {allUserIds.map(uid => {
+                      const color = getUserColor(uid);
+                      const entry = urlaub.find(u => u.user_id === uid);
+                      const label = entry?.abbreviation || entry?.username || '?';
+                      return (
+                        <span key={uid} className="flex items-center gap-1">
+                          <span className={`w-3 h-3 rounded ${color.bg} inline-block shadow-sm`}></span> {label}
+                        </span>
+                      );
+                    })}
+                    <span className="flex items-center gap-1">
+                      <span className="w-3 h-3 rounded bg-amber-400 inline-block shadow-sm"></span> Akt. Woche
+                    </span>
+                  </div>
+                  {user?.role !== 'viewer' && (
+                    <button onClick={() => setUrlaubModal(true)} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm">
+                      + Urlaub eintragen
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-gray-500 mb-4 italic">
+                Klicken Sie auf ein Kuerzel im Kalender zum Loeschen (2x Klick bestaetigt). Nutzen Sie den Button oben, um neuen Urlaub anzulegen.
+              </p>
+              <div className="grid gap-6" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+                {months.map(({ year: y, month: m }) => (
+                  <div key={`${y}-${m}`} className="border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow">
+                    <MonthCalendar y={y} m={m} />
+                  </div>
+                ))}
+              </div>
+              {urlaub.length > 0 && (
+                <div className="mt-6 border-t border-gray-200 pt-4">
+                  <h3 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">Eingetragene Urlaube</h3>
+                  <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                    {urlaub.map(entry => {
+                      const color = getUserColor(entry.user_id);
+                      const canDel = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
+                      return (
+                        <div key={entry.id} className="flex items-center justify-between px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${color.bg} ${color.text}`}>{entry.abbreviation || entry.username}</span>
+                            <span className="text-sm text-gray-700 dark:text-gray-300">{formatDateDE(entry.start_date)} - {formatDateDE(entry.end_date)}</span>
+                          </div>
+                          {canDel && (
+                            <button onClick={() => handleDeleteUrlaub(entry)}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${urlaubPendingDelete === entry.id ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30'}`}
+                            >
+                              {urlaubPendingDelete === entry.id ? 'OK?' : 'x'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {urlaubModal && <UrlaubModal />}
             </div>
           );
         })()

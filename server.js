@@ -171,6 +171,17 @@ const initDatabase = () => {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
     );
 
+    -- Urlaub (Vacation Planning)
+    CREATE TABLE IF NOT EXISTS urlaub (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_urlaub_user ON urlaub(user_id);
+    CREATE INDEX IF NOT EXISTS idx_urlaub_dates ON urlaub(start_date, end_date);
+
     -- SIDs
     CREATE TABLE IF NOT EXISTS sids (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -773,7 +784,7 @@ const authenticate = (req, res, next) => {
   }
 
   const session = db.prepare(`
-    SELECT s.*, u.id as user_id, u.username, u.role 
+    SELECT s.*, u.id as user_id, u.username, u.role, u.abbreviation 
     FROM sessions s 
     JOIN users u ON s.user_id = u.id 
     WHERE s.token = ? AND s.expires_at > datetime('now')
@@ -787,6 +798,7 @@ const authenticate = (req, res, next) => {
     id: session.user_id,
     username: session.username,
     role: session.role,
+    abbreviation: session.abbreviation || session.username,
     version: APP_VERSION
   };
   next();
@@ -3010,6 +3022,116 @@ app.delete('/api/bereitschaft/:week_start', authenticate, (req, res) => {
 
     db.prepare('DELETE FROM bereitschaft WHERE week_start = ?').run(week_start);
     logAction(req.user.id, req.user.username, 'DELETE_BEREITSCHAFT', { week_start });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// =========================================================================
+// API: URLAUB (VACATION PLANNING)
+// =========================================================================
+
+// Get all vacation entries
+app.get('/api/urlaub', authenticate, (req, res) => {
+  try {
+    // Viewers should not access this endpoint
+    if (req.user.role === 'viewer') {
+      return res.status(403).json({ error: 'Kein Zugriff für Viewer' });
+    }
+    const data = db.prepare(`
+      SELECT u.id, u.user_id, u.start_date, u.end_date,
+             usr.abbreviation, usr.username
+      FROM urlaub u
+      JOIN users usr ON u.user_id = usr.id
+      ORDER BY u.start_date ASC
+    `).all();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create vacation entry
+app.post('/api/urlaub', authenticate, (req, res) => {
+  try {
+    if (req.user.role === 'viewer') {
+      return res.status(403).json({ error: 'Kein Zugriff für Viewer' });
+    }
+
+    const { start_date, end_date, user_id } = req.body;
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date und end_date sind erforderlich' });
+    }
+    if (end_date < start_date) {
+      return res.status(400).json({ error: 'end_date darf nicht vor start_date liegen' });
+    }
+
+    // Determine target user
+    let targetUserId = req.user.id;
+    if (user_id && user_id !== req.user.id) {
+      // Only teamlead may create vacation for other users
+      if (req.user.role !== 'teamlead') {
+        return res.status(403).json({ error: 'Nur Teamleads dürfen Urlaub für andere Benutzer eintragen.' });
+      }
+      targetUserId = user_id;
+    }
+
+    // Check for overlapping vacations for same user
+    const overlap = db.prepare(`
+      SELECT id FROM urlaub
+      WHERE user_id = ? AND start_date <= ? AND end_date >= ?
+    `).get(targetUserId, end_date, start_date);
+    if (overlap) {
+      return res.status(400).json({ error: 'Es gibt bereits einen überlappenden Urlaubseintrag für diesen Benutzer.' });
+    }
+
+    const result = db.prepare('INSERT INTO urlaub (user_id, start_date, end_date) VALUES (?, ?, ?)').run(
+      targetUserId, start_date, end_date
+    );
+
+    // Fetch the created entry with user details
+    const entry = db.prepare(`
+      SELECT u.id, u.user_id, u.start_date, u.end_date,
+             usr.abbreviation, usr.username
+      FROM urlaub u
+      JOIN users usr ON u.user_id = usr.id
+      WHERE u.id = ?
+    `).get(result.lastInsertRowid);
+
+    logAction(req.user.id, req.user.username, 'CREATE_URLAUB', {
+      targetUserId, start_date, end_date
+    });
+    res.json(entry);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete vacation entry
+app.delete('/api/urlaub/:id', authenticate, (req, res) => {
+  try {
+    if (req.user.role === 'viewer') {
+      return res.status(403).json({ error: 'Kein Zugriff für Viewer' });
+    }
+
+    const entry = db.prepare('SELECT * FROM urlaub WHERE id = ?').get(req.params.id);
+    if (!entry) {
+      return res.status(404).json({ error: 'Urlaubseintrag nicht gefunden' });
+    }
+
+    // Only teamlead can delete anyone's, others can only delete their own
+    if (req.user.role !== 'teamlead' && entry.user_id !== req.user.id) {
+      return res.status(403).json({ error: 'Sie dürfen nur Ihre eigenen Urlaubseinträge löschen.' });
+    }
+
+    db.prepare('DELETE FROM urlaub WHERE id = ?').run(req.params.id);
+    logAction(req.user.id, req.user.username, 'DELETE_URLAUB', {
+      urlaubId: req.params.id,
+      targetUserId: entry.user_id,
+      start_date: entry.start_date,
+      end_date: entry.end_date
+    });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
