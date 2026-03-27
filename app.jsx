@@ -6088,24 +6088,21 @@ const SAPBasisPlanner = () => {
                             const entries = urlaubByDate[dayISO] || [];
                             return (
                               <td key={di} className={`text-center py-0.5 px-0 rounded relative ${di >= 5 ? 'text-red-400' : ''} ${!inMonth ? 'text-gray-300' : ''} ${isToday ? 'font-bold underline' : ''}`}>
-                                <div className="flex flex-col items-center min-h-[1.25rem] w-full overflow-hidden gap-0">
-                                  {entries.length > 0 ? (
-                                    entries.map((entry, ei) => {
-                                      const color = getUserColor(entry.user_id);
-                                      const canDel = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
-                                      return (
-                                        <span key={ei}
-                                          onClick={(e) => { e.stopPropagation(); if (canDel) handleDeleteUrlaub(entry); }}
-                                          className={`text-[8px] font-bold px-0.5 rounded shadow-sm truncate w-[95%] ${canDel ? 'cursor-pointer' : ''} ${urlaubPendingDelete === entry.id ? 'bg-red-600 text-white animate-pulse' : `${color.bg} ${color.text}`}`}
-                                          title={entry.abbreviation}
-                                        >
-                                          {urlaubPendingDelete === entry.id ? 'x' : entry.abbreviation}
-                                        </span>
-                                      );
-                                    })
-                                  ) : (
-                                    <span>{inMonth ? day.getDate() : ''}</span>
-                                  )}
+                                <div className="flex flex-col items-center w-full overflow-hidden gap-0">
+                                  <span className="leading-tight">{inMonth ? day.getDate() : ''}</span>
+                                  {entries.map((entry, ei) => {
+                                    const color = getUserColor(entry.user_id);
+                                    const canDel = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
+                                    return (
+                                      <span key={ei}
+                                        onClick={(e) => { e.stopPropagation(); if (canDel) handleDeleteUrlaub(entry); }}
+                                        className={`text-[7px] font-bold px-0.5 rounded shadow-sm truncate w-[95%] leading-tight ${canDel ? 'cursor-pointer' : ''} ${urlaubPendingDelete === entry.id ? 'bg-red-600 text-white animate-pulse' : `${color.bg} ${color.text}`}`}
+                                        title={entry.abbreviation}
+                                      >
+                                        {urlaubPendingDelete === entry.id ? 'x' : entry.abbreviation}
+                                      </span>
+                                    );
+                                  })}
                                 </div>
                               </td>
                             );
