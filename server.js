@@ -266,6 +266,7 @@ const initDatabase = () => {
       rule_type TEXT CHECK(rule_type IN ('every_x_weeks', 'x_per_year', 'manual')) DEFAULT 'manual',
       rule_value INTEGER DEFAULT 0,
       rule_start_date TEXT,
+      rule_end_date TEXT,
       default_start_time TEXT DEFAULT '',
       default_end_time TEXT DEFAULT '',
       team_member_id INTEGER REFERENCES team_members(id) ON DELETE SET NULL
@@ -577,6 +578,12 @@ const initDatabase = () => {
     console.log('✓ Added abbreviation to sid_locks');
   } catch (e) { }
 
+  // Migration: Add rule_end_date column to activity_series
+  try {
+    db.exec(`ALTER TABLE activity_series ADD COLUMN rule_end_date TEXT`);
+    console.log('✓ Added rule_end_date to activity_series');
+  } catch (e) { }
+
   // Migration: Create user_sid_visibility table for per-user Gantt visibility
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_sid_visibility (
@@ -740,8 +747,10 @@ const autoUpdateActivityStatuses = () => {
 
 // Run on boot
 autoUpdateActivityStatuses();
-// Run every hour
-setInterval(autoUpdateActivityStatuses, 60 * 60 * 1000);
+// Run every hour (but skip during tests to avoid open handles)
+if (process.env.NODE_ENV !== 'test') {
+  setInterval(autoUpdateActivityStatuses, 60 * 60 * 1000);
+}
 
 // =========================================================================
 // LOGGING HELPER
@@ -1214,6 +1223,7 @@ app.get('/api/landscapes', authenticate, (req, res) => {
               ruleType: s.rule_type,
               ruleValue: s.rule_value,
               ruleStartDate: s.rule_start_date,
+              ruleEndDate: s.rule_end_date,
               defaultStartTime: s.default_start_time,
               defaultEndTime: s.default_end_time,
               teamMemberId: s.team_member_id,
@@ -1610,12 +1620,20 @@ app.put('/api/activities/:id/archive', authenticate, requireAdmin, (req, res) =>
 // =========================================================================
 
 // Helper: generate occurrence dates based on rule
-function generateOccurrenceDates(ruleType, ruleValue, startDate, year) {
+function generateOccurrenceDates(ruleType, ruleValue, startDate, year, endDate) {
   const dates = [];
   const start = new Date(startDate);
   // 14-month window: Dec of previous year through Jan of next year
   const windowStart = new Date(year - 1, 11, 1); // Dec 1 of prev year
-  const windowEnd = new Date(year + 1, 1, 31);   // Jan 31 of next year
+  let windowEnd = new Date(year + 1, 1, 31);   // Jan 31 of next year
+
+  // If an end date is specified, use it as the upper bound (inclusive)
+  if (endDate) {
+    // Parse as UTC date and add 1 day so the end date itself is included in the range
+    const endBound = new Date(endDate);
+    endBound.setDate(endBound.getDate() + 1); // make it exclusive upper bound (i.e., <= endDate becomes < endDate+1)
+    if (endBound < windowEnd) windowEnd = endBound;
+  }
 
   if (ruleType === 'every_x_weeks' && ruleValue > 0) {
     let current = new Date(start);
@@ -1642,22 +1660,22 @@ function generateOccurrenceDates(ruleType, ruleValue, startDate, year) {
 // Create a new series
 app.post('/api/series', authenticate, requireAdmin, (req, res) => {
   try {
-    const { sid_id, type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id, year } = req.body;
+    const { sid_id, type_id, rule_type, rule_value, rule_start_date, rule_end_date, default_start_time, default_end_time, team_member_id, year } = req.body;
 
     if (!sid_id || !type_id) {
       return res.status(400).json({ error: 'sid_id und type_id erforderlich' });
     }
 
     const result = db.prepare(
-      'INSERT INTO activity_series (sid_id, type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(sid_id, type_id, rule_type || 'manual', rule_value || 0, rule_start_date || '', default_start_time || '', default_end_time || '', team_member_id || null);
+      'INSERT INTO activity_series (sid_id, type_id, rule_type, rule_value, rule_start_date, rule_end_date, default_start_time, default_end_time, team_member_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(sid_id, type_id, rule_type || 'manual', rule_value || 0, rule_start_date || '', rule_end_date || '', default_start_time || '', default_end_time || '', team_member_id || null);
 
     const seriesId = result.lastInsertRowid;
 
     // Auto-generate occurrences if rule is not manual
     if (rule_type && rule_type !== 'manual' && rule_start_date) {
       const planYear = year || new Date().getFullYear();
-      const dates = generateOccurrenceDates(rule_type, rule_value, rule_start_date, planYear);
+      const dates = generateOccurrenceDates(rule_type, rule_value, rule_start_date, planYear, rule_end_date);
       const insertOcc = db.prepare('INSERT INTO series_occurrences (series_id, date, start_time, end_time, team_member_id, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
       dates.forEach((date, idx) => {
         insertOcc.run(seriesId, date, default_start_time || '', default_end_time || '', team_member_id || null, idx + 1);
@@ -1673,7 +1691,7 @@ app.post('/api/series', authenticate, requireAdmin, (req, res) => {
     res.json({
       ...series,
       typeId: series.type_id, ruleType: series.rule_type, ruleValue: series.rule_value,
-      ruleStartDate: series.rule_start_date, defaultStartTime: series.default_start_time,
+      ruleStartDate: series.rule_start_date, ruleEndDate: series.rule_end_date, defaultStartTime: series.default_start_time,
       defaultEndTime: series.default_end_time, teamMemberId: series.team_member_id,
       occurrences: occurrences.map(o => ({ ...o, includesWeekend: !!o.includes_weekend, teamMemberId: o.team_member_id }))
     });
@@ -1690,7 +1708,7 @@ app.get('/api/sids/:id/series', authenticate, (req, res) => {
     const occurrences = db.prepare('SELECT * FROM series_occurrences WHERE series_id = ? ORDER BY date, sort_order').all(s.id);
     return {
       ...s, typeId: s.type_id, ruleType: s.rule_type, ruleValue: s.rule_value,
-      ruleStartDate: s.rule_start_date, defaultStartTime: s.default_start_time,
+      ruleStartDate: s.rule_start_date, ruleEndDate: s.rule_end_date, defaultStartTime: s.default_start_time,
       defaultEndTime: s.default_end_time, teamMemberId: s.team_member_id,
       occurrences: occurrences.map(o => ({ ...o, includesWeekend: !!o.includes_weekend, teamMemberId: o.team_member_id }))
     };
@@ -1702,7 +1720,7 @@ app.get('/api/sids/:id/series', authenticate, (req, res) => {
 app.put('/api/series/:id', authenticate, requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const { type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id } = req.body;
+    const { type_id, rule_type, rule_value, rule_start_date, rule_end_date, default_start_time, default_end_time, team_member_id } = req.body;
     const updates = [];
     const values = [];
 
@@ -1710,6 +1728,7 @@ app.put('/api/series/:id', authenticate, requireAdmin, (req, res) => {
     if (rule_type !== undefined) { updates.push('rule_type = ?'); values.push(rule_type); }
     if (rule_value !== undefined) { updates.push('rule_value = ?'); values.push(rule_value); }
     if (rule_start_date !== undefined) { updates.push('rule_start_date = ?'); values.push(rule_start_date); }
+    if (rule_end_date !== undefined) { updates.push('rule_end_date = ?'); values.push(rule_end_date); }
     if (default_start_time !== undefined) { updates.push('default_start_time = ?'); values.push(default_start_time); }
     if (default_end_time !== undefined) { updates.push('default_end_time = ?'); values.push(default_end_time); }
     if (team_member_id !== undefined) { updates.push('team_member_id = ?'); values.push(team_member_id || null); }
@@ -1805,7 +1824,7 @@ app.delete('/api/series/:id/occurrences/:occId', authenticate, requireAdmin, (re
 app.post('/api/series/:id/generate', authenticate, requireAdmin, (req, res) => {
   try {
     const { id } = req.params;
-    const { year } = req.body;
+    const { year, end_date } = req.body;
     const series = db.prepare('SELECT * FROM activity_series WHERE id = ?').get(id);
     if (!series) return res.status(404).json({ error: 'Serie nicht gefunden' });
 
@@ -1816,9 +1835,10 @@ app.post('/api/series/:id/generate', authenticate, requireAdmin, (req, res) => {
     // Delete existing occurrences
     db.prepare('DELETE FROM series_occurrences WHERE series_id = ?').run(id);
 
-    // Generate new ones
+    // Generate new ones — prefer end_date from request body, fallback to DB value
     const planYear = year || new Date().getFullYear();
-    const dates = generateOccurrenceDates(series.rule_type, series.rule_value, series.rule_start_date, planYear);
+    const effectiveEndDate = end_date !== undefined ? end_date : series.rule_end_date;
+    const dates = generateOccurrenceDates(series.rule_type, series.rule_value, series.rule_start_date, planYear, effectiveEndDate);
     const insertOcc = db.prepare('INSERT INTO series_occurrences (series_id, date, start_time, end_time, team_member_id, sort_order) VALUES (?, ?, ?, ?, ?, ?)');
     dates.forEach((date, idx) => {
       insertOcc.run(id, date, series.default_start_time || '', series.default_end_time || '', series.team_member_id || null, idx + 1);
@@ -1844,8 +1864,8 @@ app.post('/api/series/convert', authenticate, requireAdmin, (req, res) => {
 
     // Create series from the activity
     const result = db.prepare(
-      'INSERT INTO activity_series (sid_id, type_id, rule_type, rule_value, rule_start_date, default_start_time, default_end_time, team_member_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(sid_id, activity.type_id, 'manual', 0, activity.start_date, activity.start_time || '', activity.end_time || '', activity.team_member_id || null);
+      'INSERT INTO activity_series (sid_id, type_id, rule_type, rule_value, rule_start_date, rule_end_date, default_start_time, default_end_time, team_member_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(sid_id, activity.type_id, 'manual', 0, activity.start_date, '', activity.start_time || '', activity.end_time || '', activity.team_member_id || null);
 
     const seriesId = result.lastInsertRowid;
 
@@ -1866,7 +1886,7 @@ app.post('/api/series/convert', authenticate, requireAdmin, (req, res) => {
     res.json({
       ...series,
       typeId: series.type_id, ruleType: series.rule_type, ruleValue: series.rule_value,
-      ruleStartDate: series.rule_start_date, defaultStartTime: series.default_start_time,
+      ruleStartDate: series.rule_start_date, ruleEndDate: series.rule_end_date, defaultStartTime: series.default_start_time,
       defaultEndTime: series.default_end_time, teamMemberId: series.team_member_id,
       occurrences: occurrences.map(o => ({ ...o, includesWeekend: !!o.includes_weekend, teamMemberId: o.team_member_id }))
     });
@@ -3206,9 +3226,8 @@ const startHttp = () => {
 
 
 if (process.env.NODE_ENV === 'test') {
-  // In test mode: initialize DB but don't start server.
+  // In test mode: database is already initialized above.
   // Tests import { app, db } and use supertest directly.
-  initDatabase();
   module.exports = { app, db };
 } else {
   startServer();

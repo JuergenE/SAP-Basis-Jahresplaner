@@ -163,7 +163,7 @@ class ApiClient {
   async updateOccurrence(seriesId, occId, data) { return this.request(`/api/series/${seriesId}/occurrences/${occId}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async deleteOccurrence(seriesId, occId) { return this.request(`/api/series/${seriesId}/occurrences/${occId}`, { method: 'DELETE' }); }
   async archiveOccurrence(seriesId, occId) { return this.request(`/api/series/${seriesId}/occurrences/${occId}/archive`, { method: 'PUT' }); }
-  async regenerateSeries(id, year) { return this.request(`/api/series/${id}/generate`, { method: 'POST', body: JSON.stringify({ year }) }); }
+  async regenerateSeries(id, year, endDate) { return this.request(`/api/series/${id}/generate`, { method: 'POST', body: JSON.stringify({ year, end_date: endDate || '' }) }); }
   async convertToSeries(activity_id, sid_id) { return this.request('/api/series/convert', { method: 'POST', body: JSON.stringify({ activity_id, sid_id }) }); }
 
   // Team Members
@@ -727,17 +727,29 @@ const UploadIcon = () => (
 // =========================================================================
 const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, api, onClose }) => {
   const seriesType = activityTypes.find(t => t.id === series.typeId);
-  const [localRule, setLocalRule] = useState({ type: series.ruleType || 'manual', value: series.ruleValue || 0, startDate: series.ruleStartDate || '' });
+  const [localRule, setLocalRule] = useState({ type: series.ruleType || 'manual', value: series.ruleValue || 0, startDate: series.ruleStartDate || '', endDate: series.ruleEndDate || '' });
   const [localOccs, setLocalOccs] = useState(series.occurrences || []);
   const [localDefaults, setLocalDefaults] = useState({ startTime: series.defaultStartTime || '', endTime: series.defaultEndTime || '', teamMemberId: series.teamMemberId || '' });
   const [saving, setSaving] = useState(false);
+  // React-based confirmation dialog state (replaces native confirm() which gets
+  // auto-dismissed by browser when parent re-renders from heartbeat polling)
+  const [confirmDialog, setConfirmDialog] = useState({ open: false, message: '', onConfirm: null });
+
+  const showConfirm = (message) => new Promise((resolve) => {
+    setConfirmDialog({
+      open: true,
+      message,
+      onConfirm: () => { setConfirmDialog({ open: false, message: '', onConfirm: null }); resolve(true); },
+      onCancel: () => { setConfirmDialog({ open: false, message: '', onConfirm: null }); resolve(false); }
+    });
+  });
 
   const handleGenerate = async () => {
     if (!localRule.startDate) { alert('Bitte Startdatum angeben'); return; }
-    if (localOccs.length > 0 && !confirm('Alle bestehenden Termine werden ersetzt. Fortfahren?')) return;
+    if (localOccs.length > 0 && !(await showConfirm('Alle bestehenden Termine werden ersetzt. Fortfahren?'))) return;
     try {
-      await api.updateSeries(series.id, { rule_type: localRule.type, rule_value: localRule.value, rule_start_date: localRule.startDate, default_start_time: localDefaults.startTime, default_end_time: localDefaults.endTime, team_member_id: localDefaults.teamMemberId || null });
-      const result = await api.regenerateSeries(series.id, year);
+      await api.updateSeries(series.id, { rule_type: localRule.type, rule_value: localRule.value, rule_start_date: localRule.startDate, rule_end_date: localRule.endDate, default_start_time: localDefaults.startTime, default_end_time: localDefaults.endTime, team_member_id: localDefaults.teamMemberId || null });
+      const result = await api.regenerateSeries(series.id, year, localRule.endDate);
       setLocalOccs(result.occurrences || []);
     } catch (e) { alert('Fehler: ' + e.message); }
   };
@@ -845,7 +857,7 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
 
   const handleDeleteOcc = async (occId) => {
     try {
-      if (!window.confirm('Termin wirklich unwiderruflich löschen?')) return;
+      if (!(await showConfirm('Termin wirklich unwiderruflich löschen?'))) return;
       await api.deleteOccurrence(series.id, occId);
       setLocalOccs(prev => prev.filter(o => o.id !== occId));
     } catch (e) { alert('Fehler: ' + e.message); }
@@ -853,7 +865,7 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
 
   const handleArchiveOcc = async (occId) => {
     try {
-      if (!window.confirm('Termin wirklich archivieren? Er wird dadurch im Plan eingefroren.')) return;
+      if (!(await showConfirm('Termin wirklich archivieren? Er wird dadurch im Plan eingefroren.'))) return;
       await api.archiveOccurrence(series.id, occId);
       setLocalOccs(prev => prev.map(o => o.id === occId ? { ...o, status: 'ARCHIVED' } : o));
     } catch (e) { alert('Fehler: ' + e.message); }
@@ -862,7 +874,7 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
   const handleClose = async () => {
     setSaving(true);
     try {
-      await api.updateSeries(series.id, { rule_type: localRule.type, rule_value: localRule.value, rule_start_date: localRule.startDate, default_start_time: localDefaults.startTime, default_end_time: localDefaults.endTime, team_member_id: localDefaults.teamMemberId || null });
+      await api.updateSeries(series.id, { rule_type: localRule.type, rule_value: localRule.value, rule_start_date: localRule.startDate, rule_end_date: localRule.endDate, default_start_time: localDefaults.startTime, default_end_time: localDefaults.endTime, team_member_id: localDefaults.teamMemberId || null });
     } catch (e) { console.error(e); }
     setSaving(false);
     onClose();
@@ -893,6 +905,8 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
                 <input type="number" min="1" max="52" value={localRule.value} onChange={e => setLocalRule(prev => ({ ...prev, value: parseInt(e.target.value) || 0 }))} className="w-16 px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" />
                 <span className="text-sm text-gray-600 dark:text-gray-400">ab</span>
                 <input type="date" value={localRule.startDate} onChange={e => setLocalRule(prev => ({ ...prev, startDate: e.target.value }))} className="px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" />
+                <span className="text-sm text-gray-600 dark:text-gray-400">bis</span>
+                <input type="date" value={localRule.endDate} onChange={e => setLocalRule(prev => ({ ...prev, endDate: e.target.value }))} className="px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm" />
                 <button onClick={handleGenerate} className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 font-medium">
                   🔄 Generieren
                 </button>
@@ -998,6 +1012,30 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
           </button>
         </div>
       </div>
+
+      {/* React-based Confirm Dialog (immune to parent re-renders unlike native confirm()) */}
+      {confirmDialog.open && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]">
+          <div className="bg-white dark:bg-slate-700 rounded-lg shadow-2xl p-6 max-w-sm mx-4 transform transition-all">
+            <p className="text-gray-800 dark:text-gray-100 text-sm mb-6">{confirmDialog.message}</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={confirmDialog.onCancel}
+                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-lg transition-colors"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                autoFocus
+                className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

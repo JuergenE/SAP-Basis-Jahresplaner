@@ -327,11 +327,12 @@ class ApiClient {
       method: 'PUT'
     });
   }
-  async regenerateSeries(id, year) {
+  async regenerateSeries(id, year, endDate) {
     return this.request(`/api/series/${id}/generate`, {
       method: 'POST',
       body: JSON.stringify({
-        year
+        year,
+        end_date: endDate || ''
       })
     });
   }
@@ -1192,7 +1193,8 @@ const SeriesPopupEditor = ({
   const [localRule, setLocalRule] = useState({
     type: series.ruleType || 'manual',
     value: series.ruleValue || 0,
-    startDate: series.ruleStartDate || ''
+    startDate: series.ruleStartDate || '',
+    endDate: series.ruleEndDate || ''
   });
   const [localOccs, setLocalOccs] = useState(series.occurrences || []);
   const [localDefaults, setLocalDefaults] = useState({
@@ -1201,22 +1203,52 @@ const SeriesPopupEditor = ({
     teamMemberId: series.teamMemberId || ''
   });
   const [saving, setSaving] = useState(false);
+  // React-based confirmation dialog state (replaces native confirm() which gets
+  // auto-dismissed by browser when parent re-renders from heartbeat polling)
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    message: '',
+    onConfirm: null
+  });
+  const showConfirm = message => new Promise(resolve => {
+    setConfirmDialog({
+      open: true,
+      message,
+      onConfirm: () => {
+        setConfirmDialog({
+          open: false,
+          message: '',
+          onConfirm: null
+        });
+        resolve(true);
+      },
+      onCancel: () => {
+        setConfirmDialog({
+          open: false,
+          message: '',
+          onConfirm: null
+        });
+        resolve(false);
+      }
+    });
+  });
   const handleGenerate = async () => {
     if (!localRule.startDate) {
       alert('Bitte Startdatum angeben');
       return;
     }
-    if (localOccs.length > 0 && !confirm('Alle bestehenden Termine werden ersetzt. Fortfahren?')) return;
+    if (localOccs.length > 0 && !(await showConfirm('Alle bestehenden Termine werden ersetzt. Fortfahren?'))) return;
     try {
       await api.updateSeries(series.id, {
         rule_type: localRule.type,
         rule_value: localRule.value,
         rule_start_date: localRule.startDate,
+        rule_end_date: localRule.endDate,
         default_start_time: localDefaults.startTime,
         default_end_time: localDefaults.endTime,
         team_member_id: localDefaults.teamMemberId || null
       });
-      const result = await api.regenerateSeries(series.id, year);
+      const result = await api.regenerateSeries(series.id, year, localRule.endDate);
       setLocalOccs(result.occurrences || []);
     } catch (e) {
       alert('Fehler: ' + e.message);
@@ -1324,7 +1356,7 @@ const SeriesPopupEditor = ({
   };
   const handleDeleteOcc = async occId => {
     try {
-      if (!window.confirm('Termin wirklich unwiderruflich löschen?')) return;
+      if (!(await showConfirm('Termin wirklich unwiderruflich löschen?'))) return;
       await api.deleteOccurrence(series.id, occId);
       setLocalOccs(prev => prev.filter(o => o.id !== occId));
     } catch (e) {
@@ -1333,7 +1365,7 @@ const SeriesPopupEditor = ({
   };
   const handleArchiveOcc = async occId => {
     try {
-      if (!window.confirm('Termin wirklich archivieren? Er wird dadurch im Plan eingefroren.')) return;
+      if (!(await showConfirm('Termin wirklich archivieren? Er wird dadurch im Plan eingefroren.'))) return;
       await api.archiveOccurrence(series.id, occId);
       setLocalOccs(prev => prev.map(o => o.id === occId ? {
         ...o,
@@ -1350,6 +1382,7 @@ const SeriesPopupEditor = ({
         rule_type: localRule.type,
         rule_value: localRule.value,
         rule_start_date: localRule.startDate,
+        rule_end_date: localRule.endDate,
         default_start_time: localDefaults.startTime,
         default_end_time: localDefaults.endTime,
         team_member_id: localDefaults.teamMemberId || null
@@ -1415,6 +1448,16 @@ const SeriesPopupEditor = ({
     onChange: e => setLocalRule(prev => ({
       ...prev,
       startDate: e.target.value
+    })),
+    className: "px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm text-gray-600 dark:text-gray-400"
+  }, "bis"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: localRule.endDate,
+    onChange: e => setLocalRule(prev => ({
+      ...prev,
+      endDate: e.target.value
     })),
     className: "px-2 py-1 border border-gray-300 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200 rounded text-sm"
   }), /*#__PURE__*/React.createElement("button", {
@@ -1554,7 +1597,22 @@ const SeriesPopupEditor = ({
     onClick: handleClose,
     disabled: saving,
     className: "ml-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50 transition-colors"
-  }, saving ? 'Speichern...' : 'Fertig'))));
+  }, saving ? 'Speichern...' : 'Fertig'))), confirmDialog.open && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[60]"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-white dark:bg-slate-700 rounded-lg shadow-2xl p-6 max-w-sm mx-4 transform transition-all"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-gray-800 dark:text-gray-100 text-sm mb-6"
+  }, confirmDialog.message), /*#__PURE__*/React.createElement("div", {
+    className: "flex justify-end gap-3"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: confirmDialog.onCancel,
+    className: "px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-lg transition-colors"
+  }, "Abbrechen"), /*#__PURE__*/React.createElement("button", {
+    onClick: confirmDialog.onConfirm,
+    autoFocus: true,
+    className: "px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+  }, "OK")))));
 };
 
 // =========================================================================
