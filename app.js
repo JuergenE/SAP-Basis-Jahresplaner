@@ -537,6 +537,26 @@ class ApiClient {
       method: 'DELETE'
     });
   }
+
+  // Urlaub (Vacation)
+  async getUrlaub() {
+    return this.request('/api/urlaub');
+  }
+  async addUrlaub(start_date, end_date, user_id) {
+    return this.request('/api/urlaub', {
+      method: 'POST',
+      body: JSON.stringify({
+        start_date,
+        end_date,
+        user_id
+      })
+    });
+  }
+  async deleteUrlaub(id) {
+    return this.request(`/api/urlaub/${id}`, {
+      method: 'DELETE'
+    });
+  }
 }
 const api = new ApiClient();
 const APP_VERSION_FALLBACK = '0.2.2';
@@ -1642,6 +1662,14 @@ const SAPBasisPlanner = () => {
   const [bView, setBView] = useState('annual');
   const [bMonthIdx, setBMonthIdx] = useState(1);
   const [bPendingDelete, setBPendingDelete] = useState(null); // mondayISO of week pending deletion
+
+  // Urlaub (Vacation)
+  const [urlaub, setUrlaub] = useState([]);
+  const [urlaubModal, setUrlaubModal] = useState(false);
+  const [urlaubPendingDelete, setUrlaubPendingDelete] = useState(null);
+  const [urlaubModalStart, setUrlaubModalStart] = useState('');
+  const [urlaubModalEnd, setUrlaubModalEnd] = useState('');
+  const [urlaubModalUserId, setUrlaubModalUserId] = useState('');
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
 
@@ -1690,10 +1718,10 @@ const SAPBasisPlanner = () => {
   // Load data from API
   const loadData = useCallback(async () => {
     try {
-      const [settings, types, lands, sundays, members, matrix, trns, bereitschaftList, initialUsers] = await Promise.all([api.getSettings(), api.getActivityTypes(), api.getLandscapes(), api.getMaintenanceSundays().catch(() => []), api.getTeamMembers().catch(() => []), api.getMatrix().catch(() => ({
+      const [settings, types, lands, sundays, members, matrix, trns, bereitschaftList, initialUsers, urlaubList] = await Promise.all([api.getSettings(), api.getActivityTypes(), api.getLandscapes(), api.getMaintenanceSundays().catch(() => []), api.getTeamMembers().catch(() => []), api.getMatrix().catch(() => ({
         columns: [],
         values: []
-      })), api.getTrainings().catch(() => []), api.getBereitschaft().catch(() => []), api.getUsers().catch(() => [])]);
+      })), api.getTrainings().catch(() => []), api.getBereitschaft().catch(() => []), api.getUsers().catch(() => []), api.getUrlaub().catch(() => [])]);
       if (settings.year) setYear(parseInt(settings.year));
       if (settings.bundesland) setBundesland(settings.bundesland);
       const v = settings.version || user && user.version || APP_VERSION_FALLBACK;
@@ -1704,6 +1732,7 @@ const SAPBasisPlanner = () => {
       setMatrixValues(matrix.values || []);
       setTrainings(trns || []);
       setBereitschaft(bereitschaftList || []);
+      setUrlaub(urlaubList || []);
       if (initialUsers && initialUsers.length > 0) setUsers(initialUsers);
 
       // Calculate endDate for all activities and sub-activities on load
@@ -4111,7 +4140,10 @@ const SAPBasisPlanner = () => {
   }, "\uD83C\uDF93 Skills & Schulungen"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
     onClick: () => setActiveTab('bereitschaft'),
     className: `px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'bereitschaft' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`
-  }, "Bereitschaft"), user?.role === 'teamlead' && /*#__PURE__*/React.createElement("button", {
+  }, "Bereitschaft"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setActiveTab('urlaub'),
+    className: `px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'urlaub' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`
+  }, "Urlaubsplanung"), user?.role === 'teamlead' && /*#__PURE__*/React.createElement("button", {
     onClick: () => setActiveTab('auswertung'),
     className: `px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'auswertung' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`
   }, "\uD83D\uDCC8 Auswertung")), /*#__PURE__*/React.createElement("div", {
@@ -6083,6 +6115,310 @@ const SAPBasisPlanner = () => {
         }));
       }));
     })()));
+  })(), activeTab === 'urlaub' && user?.role !== 'viewer' && (() => {
+    const getMonday = d => {
+      const date = new Date(d);
+      const day = date.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      date.setDate(date.getDate() + diff);
+      date.setHours(0, 0, 0, 0);
+      return date;
+    };
+    const toISO = d => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    };
+    const urlaubByDate = {};
+    urlaub.forEach(u => {
+      let cur = new Date(u.start_date);
+      const end = new Date(u.end_date);
+      while (cur <= end) {
+        const key = toISO(cur);
+        if (!urlaubByDate[key]) urlaubByDate[key] = [];
+        urlaubByDate[key].push({
+          id: u.id,
+          abbreviation: u.abbreviation || u.username,
+          user_id: u.user_id
+        });
+        cur.setDate(cur.getDate() + 1);
+      }
+    });
+    const months = [];
+    for (let m = -1; m <= 12; m++) {
+      const d = new Date(year, m, 1);
+      months.push({
+        year: d.getFullYear(),
+        month: d.getMonth()
+      });
+    }
+    const MONTH_NAMES = ['Januar', 'Februar', 'M\u00e4rz', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+    const DAY_LETTERS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+    const buildMonthWeeks = (y, m) => {
+      const firstDay = new Date(y, m, 1);
+      const lastDay = new Date(y, m + 1, 0);
+      const startMonday = getMonday(firstDay);
+      const weeks = [];
+      let cur = new Date(startMonday);
+      while (cur <= lastDay) {
+        const days = [];
+        for (let i = 0; i < 7; i++) {
+          days.push(new Date(cur));
+          cur.setDate(cur.getDate() + 1);
+        }
+        weeks.push({
+          monday: new Date(days[0]),
+          days
+        });
+      }
+      return weeks;
+    };
+    const handleDeleteUrlaub = async entry => {
+      const canDelete = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
+      if (!canDelete) return;
+      if (urlaubPendingDelete === entry.id) {
+        try {
+          await api.deleteUrlaub(entry.id);
+          setUrlaub(urlaub.filter(u => u.id !== entry.id));
+          setUrlaubPendingDelete(null);
+        } catch (e) {
+          alert(e.message);
+        }
+      } else {
+        setUrlaubPendingDelete(entry.id);
+      }
+    };
+    const userColors = [{
+      bg: 'bg-sky-500',
+      text: 'text-white'
+    }, {
+      bg: 'bg-emerald-500',
+      text: 'text-white'
+    }, {
+      bg: 'bg-amber-500',
+      text: 'text-white'
+    }, {
+      bg: 'bg-rose-500',
+      text: 'text-white'
+    }, {
+      bg: 'bg-violet-500',
+      text: 'text-white'
+    }, {
+      bg: 'bg-teal-500',
+      text: 'text-white'
+    }, {
+      bg: 'bg-orange-500',
+      text: 'text-white'
+    }, {
+      bg: 'bg-pink-500',
+      text: 'text-white'
+    }];
+    const allUserIds = [...new Set(urlaub.map(u => u.user_id))];
+    const getUserColor = userId => {
+      const idx = allUserIds.indexOf(userId);
+      return userColors[idx % userColors.length];
+    };
+    const handleUrlaubSubmit = async () => {
+      if (!urlaubModalStart || !urlaubModalEnd) {
+        alert('Bitte Start- und Enddatum angeben.');
+        return;
+      }
+      if (urlaubModalEnd < urlaubModalStart) {
+        alert('Das Enddatum darf nicht vor dem Startdatum liegen.');
+        return;
+      }
+      if (user?.role === 'teamlead' && !urlaubModalUserId) {
+        alert('Bitte einen Mitarbeiter auswählen.');
+        return;
+      }
+      const targetUserId = urlaubModalUserId ? parseInt(urlaubModalUserId) : user?.id;
+      try {
+        const entry = await api.addUrlaub(urlaubModalStart, urlaubModalEnd, targetUserId);
+        setUrlaub([...urlaub, entry]);
+        setUrlaubModal(false);
+        setUrlaubModalStart('');
+        setUrlaubModalEnd('');
+        setUrlaubModalUserId(user?.role === 'teamlead' ? '' : String(user?.id));
+      } catch (e) {
+        alert(e.message);
+      }
+    };
+    const MonthCalendar = ({
+      y,
+      m
+    }) => {
+      const weeks = buildMonthWeeks(y, m);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      return /*#__PURE__*/React.createElement("div", {
+        className: "select-none"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "text-center font-bold text-base mb-2 text-sky-500"
+      }, MONTH_NAMES[m], " ", y), /*#__PURE__*/React.createElement("table", {
+        className: "w-full border-collapse text-xs table-fixed"
+      }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+        className: "text-center py-1 font-semibold w-[10%] text-gray-300 border-r border-gray-100"
+      }, "KW"), DAY_LETTERS.map((l, i) => /*#__PURE__*/React.createElement("th", {
+        key: i,
+        className: `text-center py-1 font-semibold w-[12.85%] ${i >= 5 ? 'text-red-400' : 'text-gray-500'}`
+      }, l)))), /*#__PURE__*/React.createElement("tbody", null, weeks.map((week, wi) => {
+        const mondayISO = toISO(week.monday);
+        const isThisWeek = toISO(getMonday(today)) === mondayISO;
+        return /*#__PURE__*/React.createElement("tr", {
+          key: wi,
+          className: "group"
+        }, /*#__PURE__*/React.createElement("td", {
+          className: `text-center py-1 px-0.5 text-[9px] border-r border-gray-100 font-mono ${isThisWeek ? '!bg-amber-400 !text-amber-950 font-bold' : 'text-gray-300'}`
+        }, getISOWeekNumber(week.monday)), week.days.map((day, di) => {
+          const inMonth = day.getMonth() === m;
+          const isToday = toISO(day) === toISO(today);
+          const dayISO = toISO(day);
+          const entries = urlaubByDate[dayISO] || [];
+          return /*#__PURE__*/React.createElement("td", {
+            key: di,
+            className: `text-center align-top py-0.5 px-0 rounded relative ${di >= 5 ? 'text-red-400' : ''} ${!inMonth ? 'text-gray-300' : ''} ${isToday ? 'font-bold underline' : ''}`
+          }, /*#__PURE__*/React.createElement("div", {
+            className: "flex flex-col items-center w-full overflow-hidden gap-0"
+          }, /*#__PURE__*/React.createElement("span", {
+            className: "leading-tight"
+          }, inMonth ? day.getDate() : ''), inMonth && entries.map((entry, ei) => {
+            const color = getUserColor(entry.user_id);
+            const canDel = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
+            return /*#__PURE__*/React.createElement("span", {
+              key: ei,
+              onClick: e => {
+                e.stopPropagation();
+                if (canDel) handleDeleteUrlaub(entry);
+              },
+              className: `text-[7px] font-bold px-0.5 rounded shadow-sm truncate w-[95%] leading-tight ${canDel ? 'cursor-pointer' : ''} ${urlaubPendingDelete === entry.id ? 'bg-red-600 text-white animate-pulse' : `${color.bg} ${color.text}`}`,
+              title: entry.abbreviation
+            }, urlaubPendingDelete === entry.id ? 'x' : entry.abbreviation);
+          })));
+        }));
+      }))));
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      className: "bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2"
+    }, /*#__PURE__*/React.createElement("h2", {
+      className: "text-2xl font-bold text-gray-800"
+    }, "\uD83C\uDFD6\uFE0F Urlaubsplanung ", year), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex gap-2 text-xs items-center flex-wrap"
+    }, allUserIds.map(uid => {
+      const color = getUserColor(uid);
+      const entry = urlaub.find(u => u.user_id === uid);
+      const label = entry?.abbreviation || entry?.username || '?';
+      return /*#__PURE__*/React.createElement("span", {
+        key: uid,
+        className: "flex items-center gap-1"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: `w-3 h-3 rounded ${color.bg} inline-block shadow-sm`
+      }), " ", label);
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "flex items-center gap-1"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "w-3 h-3 rounded bg-amber-400 inline-block shadow-sm"
+    }), " Akt. Woche")), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        setUrlaubModalUserId(user?.role === 'teamlead' ? '' : String(user?.id));
+        setUrlaubModal(true);
+      },
+      className: "px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+    }, "+ Urlaub eintragen"))), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs text-gray-500 mb-4 italic"
+    }, "Klicken Sie auf ein Kuerzel im Kalender zum Loeschen (2x Klick bestaetigt). Nutzen Sie den Button oben, um neuen Urlaub anzulegen."), /*#__PURE__*/React.createElement("div", {
+      className: "grid gap-6",
+      style: {
+        gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))'
+      }
+    }, months.map(({
+      year: y,
+      month: m
+    }) => /*#__PURE__*/React.createElement("div", {
+      key: `${y}-${m}`,
+      className: "border border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow"
+    }, /*#__PURE__*/React.createElement(MonthCalendar, {
+      y: y,
+      m: m
+    })))), urlaub.length > 0 && /*#__PURE__*/React.createElement("div", {
+      className: "mt-6 border-t border-gray-200 pt-4"
+    }, /*#__PURE__*/React.createElement("h3", {
+      className: "text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2"
+    }, "Eingetragene Urlaube"), /*#__PURE__*/React.createElement("div", {
+      className: "grid gap-2",
+      style: {
+        gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))'
+      }
+    }, urlaub.map(entry => {
+      const color = getUserColor(entry.user_id);
+      const canDel = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
+      return /*#__PURE__*/React.createElement("div", {
+        key: entry.id,
+        className: "flex items-center justify-between px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600"
+      }, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-2"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: `text-xs font-bold px-2 py-0.5 rounded ${color.bg} ${color.text}`
+      }, entry.abbreviation || entry.username), /*#__PURE__*/React.createElement("span", {
+        className: "text-sm text-gray-700 dark:text-gray-300"
+      }, formatDateDE(entry.start_date), " - ", formatDateDE(entry.end_date))), canDel && /*#__PURE__*/React.createElement("button", {
+        onClick: () => handleDeleteUrlaub(entry),
+        className: `text-xs px-2 py-1 rounded transition-colors ${urlaubPendingDelete === entry.id ? 'bg-red-600 text-white animate-pulse' : 'text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30'}`
+      }, urlaubPendingDelete === entry.id ? 'OK?' : 'x'));
+    }))), urlaubModal && /*#__PURE__*/React.createElement("div", {
+      className: "fixed inset-0 bg-black/50 flex items-center justify-center z-50",
+      onClick: () => setUrlaubModal(false)
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md",
+      onClick: e => e.stopPropagation()
+    }, /*#__PURE__*/React.createElement("h3", {
+      className: "text-lg font-bold text-gray-800 dark:text-gray-100 mb-4"
+    }, "\uD83C\uDFD6\uFE0F Urlaub eintragen"), user?.role === 'teamlead' && /*#__PURE__*/React.createElement("div", {
+      className: "mb-4"
+    }, /*#__PURE__*/React.createElement("label", {
+      className: "block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1"
+    }, "Mitarbeiter"), /*#__PURE__*/React.createElement("select", {
+      value: urlaubModalUserId,
+      onChange: e => setUrlaubModalUserId(e.target.value),
+      className: "w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm"
+    }, /*#__PURE__*/React.createElement("option", {
+      value: ""
+    }, "Bitte w\xE4hlen"), users.filter(u => u.role !== 'viewer').map(u => /*#__PURE__*/React.createElement("option", {
+      key: u.id,
+      value: u.id
+    }, u.abbreviation || u.username)))), /*#__PURE__*/React.createElement("div", {
+      className: "grid grid-cols-2 gap-4 mb-4"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      className: "block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1"
+    }, "Von"), /*#__PURE__*/React.createElement("input", {
+      type: "date",
+      value: urlaubModalStart,
+      onChange: e => {
+        setUrlaubModalStart(e.target.value);
+        if (!urlaubModalEnd || e.target.value > urlaubModalEnd) setUrlaubModalEnd(e.target.value);
+      },
+      className: "w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm"
+    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+      className: "block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1"
+    }, "Bis"), /*#__PURE__*/React.createElement("input", {
+      type: "date",
+      value: urlaubModalEnd,
+      min: urlaubModalStart,
+      onChange: e => setUrlaubModalEnd(e.target.value),
+      className: "w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm"
+    }))), /*#__PURE__*/React.createElement("div", {
+      className: "flex justify-end gap-3"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setUrlaubModal(false),
+      className: "px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+    }, "Abbrechen"), /*#__PURE__*/React.createElement("button", {
+      onClick: handleUrlaubSubmit,
+      className: "px-4 py-2 text-sm bg-sky-600 hover:bg-sky-700 text-white rounded-lg font-medium transition-colors"
+    }, "Speichern")))));
   })(), activeTab === 'auswertung' && (() => {
     // ── Filter helpers ──
     const currentYear = String(year);
