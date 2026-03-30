@@ -1761,9 +1761,21 @@ const SAPBasisPlanner = () => {
   const handleMouseMove = e => {
     if (!isDragging) return;
     e.preventDefault();
-    const walkX = (e.clientX - startX) * 1.5; // Drag speed multiplier
+
+    // Horizontal drag changes viewOffset (Ansicht)
+    const diffX = startX - e.clientX;
+    const dragSensitivity = 15; // pixels per day
+    if (Math.abs(diffX) >= dragSensitivity) {
+      const daysToMove = Math.round(diffX / dragSensitivity);
+      // Let React safely apply the next viewOffset
+      setViewOffset(prev => Math.max(0, prev + daysToMove));
+      // Retain remainder for smooth continuous dragging
+      setStartX(startX - daysToMove * dragSensitivity);
+    }
+
+    // Vertical drag scrolls the window
     const walkY = (e.clientY - startY) * 1.5;
-    window.scrollTo(scrollLeft - walkX, scrollTop - walkY);
+    window.scrollTo(window.scrollX, scrollTop - walkY);
   };
 
   // Check permissions
@@ -3720,8 +3732,10 @@ const SAPBasisPlanner = () => {
             if (widthPct <= 0) return null;
             const isFirstSegment = segIdx === 0;
             let titleStr = '';
+            const isHoursOnly = item.start_time && item.end_time && item.startDate === item.endDate;
             if (item.isSub) {
-              titleStr = `${item.name}: ${formatDateDE(item.startDate)} - ${formatDateDE(item.endDate)} (${item.duration} AT)${item.start_time && item.end_time ? ` (${item.start_time} - ${item.end_time})` : ''}${item.teamMemberId ? ` [${teamMembers.find(m => m.id === parseInt(item.teamMemberId))?.abbreviation || '?'}]` : ''}`;
+              const durationText = isHoursOnly ? '' : ` (${item.duration} AT)`;
+              titleStr = `${item.name}: ${formatDateDE(item.startDate)} - ${formatDateDE(item.endDate)}${durationText}${item.start_time && item.end_time ? ` (${item.start_time} - ${item.end_time})` : ''}${item.teamMemberId ? ` [${teamMembers.find(m => m.id === parseInt(item.teamMemberId))?.abbreviation || '?'}]` : ''}`;
             } else {
               let teamInfo = '';
               if (item.teamMemberId) {
@@ -3729,7 +3743,8 @@ const SAPBasisPlanner = () => {
                 teamInfo = member ? ` [${member.abbreviation}]` : '';
               }
               const timeInfo = item.start_time && item.end_time ? ` (${item.start_time} - ${item.end_time})` : '';
-              titleStr = `${actType?.label}: ${formatDateDE(item.startDate)} - ${formatDateDE(item.endDate)} (${item.duration} Arbeitstage)${timeInfo}${teamInfo}${segments.length > 1 ? ` [Teil ${segIdx + 1}/${segments.length}]` : ''}`;
+              const durationText = isHoursOnly ? '' : ` (${item.duration} Arbeitstage)`;
+              titleStr = `${actType?.label}: ${formatDateDE(item.startDate)} - ${formatDateDE(item.endDate)}${durationText}${timeInfo}${teamInfo}${segments.length > 1 ? ` [Teil ${segIdx + 1}/${segments.length}]` : ''}`;
             }
             const labelStr = item.isSub ? item.name : actType?.label;
             return /*#__PURE__*/React.createElement("div", {

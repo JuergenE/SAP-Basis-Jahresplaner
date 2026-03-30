@@ -112,6 +112,131 @@ const db = new Database(dbPath);
 // Enable WAL mode for better concurrent access
 db.pragma('journal_mode = WAL');
 
+// =========================================================================
+// DATE CALCULATION HELPERS (server-side, mirrors frontend logic)
+// =========================================================================
+
+const getEasterDate = (year) => {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31) - 1;
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month, day);
+};
+
+const getGermanHolidays = (year, bundesland) => {
+  const holidays = new Set();
+  const addHoliday = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    holidays.add(`${y}-${m}-${d}`);
+  };
+
+  // Fixed holidays (nationwide)
+  addHoliday(new Date(year, 0, 1));   // Neujahr
+  addHoliday(new Date(year, 4, 1));   // Tag der Arbeit
+  addHoliday(new Date(year, 9, 3));   // Tag der Deutschen Einheit
+  addHoliday(new Date(year, 11, 25)); // 1. Weihnachtstag
+  addHoliday(new Date(year, 11, 26)); // 2. Weihnachtstag
+
+  // Easter-based holidays
+  const easter = getEasterDate(year);
+  const karfreitag = new Date(easter); karfreitag.setDate(easter.getDate() - 2);
+  addHoliday(karfreitag);
+  const ostermontag = new Date(easter); ostermontag.setDate(easter.getDate() + 1);
+  addHoliday(ostermontag);
+  const christiHimmelfahrt = new Date(easter); christiHimmelfahrt.setDate(easter.getDate() + 39);
+  addHoliday(christiHimmelfahrt);
+  const pfingstmontag = new Date(easter); pfingstmontag.setDate(easter.getDate() + 50);
+  addHoliday(pfingstmontag);
+
+  // State-specific holidays
+  if (['BW', 'BY', 'ST'].includes(bundesland)) addHoliday(new Date(year, 0, 6));
+  if (['BW', 'BY', 'HE', 'NW', 'RP', 'SL'].includes(bundesland)) {
+    const fronleichnam = new Date(easter); fronleichnam.setDate(easter.getDate() + 60);
+    addHoliday(fronleichnam);
+  }
+  if (['BY', 'SL'].includes(bundesland)) addHoliday(new Date(year, 7, 15));
+  if (['BB', 'MV', 'SN', 'ST', 'TH'].includes(bundesland)) addHoliday(new Date(year, 9, 31));
+  if (['BW', 'BY', 'NW', 'RP', 'SL'].includes(bundesland)) addHoliday(new Date(year, 10, 1));
+  if (bundesland === 'SN') {
+    const nov23 = new Date(year, 10, 23);
+    const dayOfWeek = nov23.getDay();
+    const daysToWednesday = (dayOfWeek + 4) % 7;
+    const bussUndBettag = new Date(nov23); bussUndBettag.setDate(nov23.getDate() - daysToWednesday);
+    addHoliday(bussUndBettag);
+  }
+
+  return holidays;
+};
+
+const formatDateISO = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+/**
+ * Calculate end date based on working days (Arbeitstage).
+ * Duration 0 = sub-day (time-based), start and end are the same day.
+ * includesWeekend = true means weekends ARE working days (only holidays excluded).
+ */
+const calculateEndDate = (startDateStr, durationDays, year, bundesland, includesWeekend = false) => {
+  if (!startDateStr) return null;
+  if (durationDays === 0) return startDateStr;
+
+  const holidays = getGermanHolidays(year, bundesland);
+  let current = new Date(startDateStr);
+  let workingDaysCount = 0;
+
+  while (workingDaysCount < durationDays) {
+    const dateStr = formatDateISO(current);
+    const dayOfWeek = current.getDay();
+
+    let isWorkingDay;
+    if (includesWeekend) {
+      isWorkingDay = !holidays.has(dateStr);
+    } else {
+      isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6 && !holidays.has(dateStr);
+    }
+
+    if (isWorkingDay) {
+      workingDaysCount++;
+      if (workingDaysCount >= durationDays) break;
+    }
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return formatDateISO(current);
+};
+
+/** Read current year and bundesland from settings table */
+const getSettingsForEndDate = () => {
+  try {
+    const yearRow = db.prepare("SELECT value FROM settings WHERE key = 'year'").get();
+    const blRow = db.prepare("SELECT value FROM settings WHERE key = 'bundesland'").get();
+    return {
+      year: parseInt(yearRow?.value || new Date().getFullYear()),
+      bundesland: blRow?.value || 'BW'
+    };
+  } catch {
+    return { year: new Date().getFullYear(), bundesland: 'BW' };
+  }
+};
+
 // Initialize database schema
 const initDatabase = () => {
   db.exec(`
@@ -664,6 +789,46 @@ const initDatabase = () => {
     try { db.pragma('foreign_keys = ON'); } catch (err) { }
   }
 
+  // Migration: Add end_date column to activities and sub_activities
+  try {
+    db.exec(`ALTER TABLE activities ADD COLUMN end_date TEXT`);
+    console.log('✓ Added end_date column to activities');
+  } catch (e) { /* Column already exists */ }
+  try {
+    db.exec(`ALTER TABLE sub_activities ADD COLUMN end_date TEXT`);
+    console.log('✓ Added end_date column to sub_activities');
+  } catch (e) { /* Column already exists */ }
+
+  // Backfill: Compute end_date for all activities/sub_activities that don't have one
+  try {
+    const { year, bundesland } = getSettingsForEndDate();
+    const activitiesToFix = db.prepare(
+      "SELECT id, start_date, duration, includes_weekend FROM activities WHERE end_date IS NULL AND start_date IS NOT NULL"
+    ).all();
+    if (activitiesToFix.length > 0) {
+      const updateStmt = db.prepare('UPDATE activities SET end_date = ? WHERE id = ?');
+      for (const act of activitiesToFix) {
+        const endDate = calculateEndDate(act.start_date, act.duration || 1, year, bundesland, !!act.includes_weekend);
+        updateStmt.run(endDate, act.id);
+      }
+      console.log(`✓ Backfilled end_date for ${activitiesToFix.length} activities`);
+    }
+
+    const subsToFix = db.prepare(
+      "SELECT id, start_date, duration, includes_weekend FROM sub_activities WHERE end_date IS NULL AND start_date IS NOT NULL"
+    ).all();
+    if (subsToFix.length > 0) {
+      const updateSubStmt = db.prepare('UPDATE sub_activities SET end_date = ? WHERE id = ?');
+      for (const sub of subsToFix) {
+        const endDate = calculateEndDate(sub.start_date, sub.duration || 1, year, bundesland, !!sub.includes_weekend);
+        updateSubStmt.run(endDate, sub.id);
+      }
+      console.log(`✓ Backfilled end_date for ${subsToFix.length} sub_activities`);
+    }
+  } catch (e) {
+    console.error('end_date backfill error:', e.message);
+  }
+
   console.log('✓ Database initialized');
 };
 
@@ -684,15 +849,14 @@ const autoUpdateActivityStatuses = () => {
     archivedThresholdDate.setDate(archivedThresholdDate.getDate() - ARCHIVED_THRESHOLD_DAYS);
     const archivedStr = archivedThresholdDate.toISOString().split('T')[0];
 
-    // Compute end dates logically by adding duration (we'll do a simple approximation for SQLite or use date('now'))
-    // SQLite: date(start_date, '+' || (duration - 1) || ' days')
+    // Use stored end_date for accurate working-day-aware comparisons
     
-    // 1. Move PLANNED to COMPLETED
+    // 1. Move PLANNED to COMPLETED (end_date has passed)
     const stmtCompleted = db.prepare(`
       UPDATE activities 
       SET status = 'COMPLETED' 
       WHERE status = 'PLANNED' 
-      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
+      AND end_date IS NOT NULL AND end_date <= ?
     `);
     const resCompleted = stmtCompleted.run(completedStr);
 
@@ -700,7 +864,7 @@ const autoUpdateActivityStatuses = () => {
       UPDATE sub_activities 
       SET status = 'COMPLETED' 
       WHERE status = 'PLANNED' 
-      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
+      AND end_date IS NOT NULL AND end_date <= ?
     `);
     stmtSubCompleted.run(completedStr);
 
@@ -717,7 +881,7 @@ const autoUpdateActivityStatuses = () => {
       UPDATE activities 
       SET status = 'ARCHIVED' 
       WHERE status = 'COMPLETED' 
-      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
+      AND end_date IS NOT NULL AND end_date <= ?
     `);
     const resArchived = stmtArchived.run(archivedStr);
 
@@ -725,7 +889,7 @@ const autoUpdateActivityStatuses = () => {
       UPDATE sub_activities 
       SET status = 'ARCHIVED' 
       WHERE status = 'COMPLETED' 
-      AND date(start_date, (COALESCE(duration, 1) - 1) || ' days') <= ?
+      AND end_date IS NOT NULL AND end_date <= ?
     `);
     stmtSubArchived.run(archivedStr);
 
@@ -1447,14 +1611,14 @@ app.post('/api/sids/:id/copy', authenticate, requireAdmin, (req, res) => {
       const activities = db.prepare('SELECT * FROM activities WHERE sid_id = ?').all(id);
 
       const insertActivity = db.prepare(`
-        INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, start_time, end_time, team_member_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, start_time, end_time, team_member_id, end_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const subActivities = db.prepare('SELECT * FROM sub_activities WHERE activity_id = ?');
       const insertSubActivity = db.prepare(`
-        INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, start_time, end_time, team_member_id, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, start_time, end_time, team_member_id, sort_order, end_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const activity of activities) {
@@ -1466,7 +1630,8 @@ app.post('/api/sids/:id/copy', authenticate, requireAdmin, (req, res) => {
           activity.includes_weekend,
           activity.start_time,
           activity.end_time,
-          activity.team_member_id
+          activity.team_member_id,
+          activity.end_date
         );
         const newActivityId = activityResult.lastInsertRowid;
 
@@ -1482,7 +1647,8 @@ app.post('/api/sids/:id/copy', authenticate, requireAdmin, (req, res) => {
             sub.start_time,
             sub.end_time,
             sub.team_member_id,
-            sub.sort_order
+            sub.sort_order,
+            sub.end_date
           );
         }
       }
@@ -1529,10 +1695,13 @@ app.post('/api/activities', authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'sid_id, type_id und start_date erforderlich' });
   }
 
+  const { year, bundesland } = getSettingsForEndDate();
+  const end_date = calculateEndDate(start_date, duration || 1, year, bundesland, !!includes_weekend);
+
   const result = db.prepare(`
-    INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, team_member_id) 
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(sid_id, type_id, start_date, duration || 1, includes_weekend ? 1 : 0, team_member_id || null);
+    INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, team_member_id, end_date) 
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(sid_id, type_id, start_date, duration || 1, includes_weekend ? 1 : 0, team_member_id || null, end_date);
 
   logAction(req.user.id, req.user.username, 'ACTIVITY_CREATE', { sid_id, type_id, start_date, duration });
 
@@ -1541,6 +1710,7 @@ app.post('/api/activities', authenticate, requireAdmin, (req, res) => {
     sid_id,
     type: type_id,
     startDate: start_date,
+    endDate: end_date,
     duration: duration || 1,
     includesWeekend: !!includes_weekend,
     team_member_id: team_member_id || null,
@@ -1586,6 +1756,20 @@ app.put('/api/activities/:id', authenticate, requireAdmin, (req, res) => {
 
   if (updates.length === 0) {
     return res.status(400).json({ error: 'Keine Änderungen angegeben' });
+  }
+
+  // Recompute end_date if start_date, duration, or includes_weekend changed
+  if (start_date !== undefined || duration !== undefined || includes_weekend !== undefined) {
+    const current = db.prepare('SELECT start_date, duration, includes_weekend FROM activities WHERE id = ?').get(id);
+    if (current) {
+      const effectiveStart = start_date !== undefined ? start_date : current.start_date;
+      const effectiveDuration = duration !== undefined ? duration : current.duration;
+      const effectiveWeekend = includes_weekend !== undefined ? !!includes_weekend : !!current.includes_weekend;
+      const { year, bundesland } = getSettingsForEndDate();
+      const newEndDate = calculateEndDate(effectiveStart, effectiveDuration || 1, year, bundesland, effectiveWeekend);
+      updates.push('end_date = ?');
+      values.push(newEndDate);
+    }
   }
 
   values.push(id);
@@ -1916,10 +2100,13 @@ app.post('/api/sub-activities', authenticate, requireAdmin, (req, res) => {
   const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sub_activities WHERE activity_id = ?').get(activity_id);
   const sortOrder = (maxOrder?.max || 0) + 1;
 
+  const { year, bundesland } = getSettingsForEndDate();
+  const end_date = calculateEndDate(start_date, duration || 1, year, bundesland, !!includes_weekend);
+
   const result = db.prepare(`
-    INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, sort_order, team_member_id) 
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(activity_id, name || 'Sub-Aktivität', start_date, duration || 1, includes_weekend ? 1 : 0, sortOrder, team_member_id || null);
+    INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, sort_order, team_member_id, end_date) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(activity_id, name || 'Sub-Aktivität', start_date, duration || 1, includes_weekend ? 1 : 0, sortOrder, team_member_id || null, end_date);
 
   logAction(req.user.id, req.user.username, 'SUBACTIVITY_CREATE', { activity_id, name, start_date, duration });
 
@@ -1928,6 +2115,7 @@ app.post('/api/sub-activities', authenticate, requireAdmin, (req, res) => {
     activity_id,
     name: name || 'Sub-Aktivität',
     startDate: start_date,
+    endDate: end_date,
     duration: duration || 1,
     includesWeekend: !!includes_weekend,
     sort_order: sortOrder,
@@ -1974,6 +2162,20 @@ app.put('/api/sub-activities/:id', authenticate, requireAdmin, (req, res) => {
 
   if (updates.length === 0) {
     return res.status(400).json({ error: 'Keine Änderungen angegeben' });
+  }
+
+  // Recompute end_date if start_date, duration, or includes_weekend changed
+  if (start_date !== undefined || duration !== undefined || includes_weekend !== undefined) {
+    const current = db.prepare('SELECT start_date, duration, includes_weekend FROM sub_activities WHERE id = ?').get(id);
+    if (current) {
+      const effectiveStart = start_date !== undefined ? start_date : current.start_date;
+      const effectiveDuration = duration !== undefined ? duration : current.duration;
+      const effectiveWeekend = includes_weekend !== undefined ? !!includes_weekend : !!current.includes_weekend;
+      const { year, bundesland } = getSettingsForEndDate();
+      const newEndDate = calculateEndDate(effectiveStart, effectiveDuration || 1, year, bundesland, effectiveWeekend);
+      updates.push('end_date = ?');
+      values.push(newEndDate);
+    }
   }
 
   values.push(id);
@@ -2386,16 +2588,22 @@ app.post('/api/import/json', authenticate, requireAdmin, (req, res) => {
               const newSidId = sidResult.lastInsertRowid;
 
               if (sid.activities && Array.isArray(sid.activities)) {
+                const { year: settingsYear, bundesland: settingsBL } = getSettingsForEndDate();
                 sid.activities.forEach(activity => {
+                  const actStartDate = activity.startDate;
+                  const actDuration = activity.duration || 1;
+                  const actWeekend = !!activity.includesWeekend;
+                  const actEndDate = calculateEndDate(actStartDate, actDuration, settingsYear, settingsBL, actWeekend);
                   db.prepare(`
-                    INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend) 
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, end_date) 
+                    VALUES (?, ?, ?, ?, ?, ?)
                   `).run(
                     newSidId,
                     activity.type,
-                    activity.startDate,
-                    activity.duration || 1,
-                    activity.includesWeekend ? 1 : 0
+                    actStartDate,
+                    actDuration,
+                    actWeekend ? 1 : 0,
+                    actEndDate
                   );
                 });
               }
@@ -2690,20 +2898,26 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
               stats.sids++;
 
               if (sid.activities && Array.isArray(sid.activities)) {
+                const { year: settingsYear, bundesland: settingsBL } = getSettingsForEndDate();
                 sid.activities.forEach(activity => {
                   const teamMemberId = activity.teamMemberId || activity.team_member_id;
+                  const actStartDate = activity.startDate || activity.start_date;
+                  const actDuration = activity.duration || 1;
+                  const actWeekend = !!(activity.includesWeekend || activity.includes_weekend);
+                  const actEndDate = activity.endDate || activity.end_date || calculateEndDate(actStartDate, actDuration, settingsYear, settingsBL, actWeekend);
                   const activityResult = db.prepare(`
-                    INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, team_member_id, start_time, end_time) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO activities (sid_id, type_id, start_date, duration, includes_weekend, team_member_id, start_time, end_time, end_date) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                   `).run(
                     newSidId,
                     activity.type || activity.type_id,
-                    activity.startDate || activity.start_date,
-                    activity.duration || 1,
-                    activity.includesWeekend || activity.includes_weekend ? 1 : 0,
+                    actStartDate,
+                    actDuration,
+                    actWeekend ? 1 : 0,
                     teamMemberMap.has(teamMemberId) ? teamMemberId : null,
                     activity.start_time || null,
-                    activity.end_time || null
+                    activity.end_time || null,
+                    actEndDate
                   );
                   const newActivityId = activityResult.lastInsertRowid;
                   stats.activities++;
@@ -2711,19 +2925,24 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
                   if (activity.subActivities && Array.isArray(activity.subActivities)) {
                     activity.subActivities.forEach((sub, subIndex) => {
                       const subTeamMemberId = sub.teamMemberId || sub.team_member_id;
+                      const subStartDate = sub.startDate || sub.start_date;
+                      const subDuration = sub.duration || 1;
+                      const subWeekend = !!(sub.includesWeekend || sub.includes_weekend);
+                      const subEndDate = sub.endDate || sub.end_date || calculateEndDate(subStartDate, subDuration, settingsYear, settingsBL, subWeekend);
                       db.prepare(`
-                        INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, sort_order, team_member_id, start_time, end_time) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO sub_activities (activity_id, name, start_date, duration, includes_weekend, sort_order, team_member_id, start_time, end_time, end_date) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                       `).run(
                         newActivityId,
                         sub.name || 'Sub-Aktivität',
-                        sub.startDate || sub.start_date,
-                        sub.duration || 1,
-                        sub.includesWeekend || sub.includes_weekend ? 1 : 0,
+                        subStartDate,
+                        subDuration,
+                        subWeekend ? 1 : 0,
                         sub.sort_order ?? subIndex,
                         teamMemberMap.has(subTeamMemberId) ? subTeamMemberId : null,
                         sub.start_time || null,
-                        sub.end_time || null
+                        sub.end_time || null,
+                        subEndDate
                       );
                       stats.subActivities++;
                     });
