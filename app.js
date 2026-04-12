@@ -796,6 +796,28 @@ const getGermanHolidays = (year, bundesland) => {
   return holidays;
 };
 
+/** Cache for holiday sets to avoid recomputation when crossing year boundaries */
+const _holidayCache = new Map();
+const getHolidaysForYear = (year, bundesland) => {
+  const key = `${year}_${bundesland}`;
+  if (_holidayCache.has(key)) return _holidayCache.get(key);
+  const holidays = getGermanHolidays(year, bundesland);
+  _holidayCache.set(key, holidays);
+  // Keep cache small: only retain last 5 entries
+  if (_holidayCache.size > 5) {
+    const firstKey = _holidayCache.keys().next().value;
+    _holidayCache.delete(firstKey);
+  }
+  return holidays;
+};
+
+/** Check if a given date string is a holiday for its own year */
+const isHolidayForDate = (dateStr, bundesland) => {
+  const year = parseInt(dateStr.substring(0, 4));
+  const holidays = getHolidaysForYear(year, bundesland);
+  return holidays.has(dateStr);
+};
+
 // Check if a date is a weekend (Saturday=6, Sunday=0)
 const isWeekend = date => {
   const day = date.getDay();
@@ -830,11 +852,13 @@ const getMondayOfWeek = date => {
 // Duration = 1 means start date = end date (start day is the first working day)
 // For PRD systems: weekends (Sat/Sun) ARE working days (work happens on weekends)
 // For non-PRD systems: weekends are NOT working days
+//
+// Multi-year aware: derives the correct holiday calendar from each day's own year,
+// so activities crossing year boundaries (e.g. Dec 30 → Jan 3) work correctly.
+// The `year` param is kept for API compatibility but is now ignored.
 const calculateEndDate = (startDateStr, durationDays, year, bundesland, isPRD = false) => {
   // Duration 0 = sub-day activity (time-based), start and end are the same day
   if (durationDays === 0) return startDateStr;
-  const holidays = getGermanHolidays(year, bundesland);
-  const holidayDates = new Set(holidays.keys());
   let current = new Date(startDateStr);
   let workingDaysCount = 0;
   while (workingDaysCount < durationDays) {
@@ -843,10 +867,10 @@ const calculateEndDate = (startDateStr, durationDays, year, bundesland, isPRD = 
     let isWorkingDay;
     if (isPRD) {
       // PRD systems: weekends ARE working days, only holidays are excluded
-      isWorkingDay = !holidayDates.has(dateStr);
+      isWorkingDay = !isHolidayForDate(dateStr, bundesland);
     } else {
       // Non-PRD systems: weekends and holidays are NOT working days
-      isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateStr);
+      isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6 && !isHolidayForDate(dateStr, bundesland);
     }
     if (isWorkingDay) {
       workingDaysCount++;
@@ -1707,17 +1731,13 @@ const SAPBasisPlanner = () => {
   const [viewMode, setViewMode] = useState('week');
   const [selectedQuarter, setSelectedQuarter] = useState(1);
   const [viewOffset, setViewOffset] = useState(() => {
-    // Start at Today if current year matches default year (2026)
-    const currentYear = new Date().getFullYear();
+    // Position viewport so today is at the LEFT edge
     const defaultYear = 2026;
-    if (currentYear === defaultYear) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const rangeStart = new Date(defaultYear, 0, 1);
-      rangeStart.setDate(rangeStart.getDate() - 60);
-      return Math.max(0, Math.round((today - rangeStart) / (1000 * 60 * 60 * 24)));
-    }
-    return 60; // Default fallback (approx Jan 1) if not current year
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const rangeStart = new Date(defaultYear - 1, 0, 1);
+    const daysSinceRangeStart = Math.round((today - rangeStart) / (1000 * 60 * 60 * 24));
+    return Math.max(0, daysSinceRangeStart);
   });
   const [collapsedLandscapes, setCollapsedLandscapes] = useState(new Set());
   const [collapsedSids, setCollapsedSids] = useState(new Set());
@@ -1826,6 +1846,19 @@ const SAPBasisPlanner = () => {
   // canManageTeam: ONLY Teamlead can manage team members (add/delete/edit days)
   const canManageTeam = user?.role === 'teamlead';
 
+  // 24-hour rule: Regular users can only edit data in the future or within the last 24 hours.
+  // Teamleads can always make corrections to old data.
+  const isDateEditable = useCallback(dateStr => {
+    if (!dateStr) return canEdit; // No date = structural edit, use normal canEdit
+    if (user?.role === 'teamlead') return true; // Teamleads bypass the 24-hour rule
+    if (!canEdit) return false; // Non-editors can never edit
+
+    const targetDate = new Date(dateStr);
+    targetDate.setHours(23, 59, 59, 999); // End of the target day
+    const cutoff = new Date();
+    cutoff.setHours(cutoff.getHours() - 24); // 24 hours ago
+    return targetDate >= cutoff; // Editable if within 24 hours or in the future
+  }, [canEdit, user?.role]);
   // Load data from API
   const loadData = useCallback(async () => {
     try {
@@ -2048,11 +2081,10 @@ const SAPBasisPlanner = () => {
       setBPendingDelete(null);
       setShowCsvDropdown(false);
 
-      // Reset Gantt scroll position to "Today"
+      // Reset Gantt scroll position to "Today" at LEFT edge within 3-year range
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const rangeStart = new Date(year, 0, 1);
-      rangeStart.setDate(rangeStart.getDate() - 60);
+      const rangeStart = new Date(year - 1, 0, 1);
       const offset = Math.max(0, Math.round((today - rangeStart) / (1000 * 60 * 60 * 24)));
       setViewOffset(offset);
       setUser(userData);
@@ -2476,8 +2508,15 @@ const SAPBasisPlanner = () => {
     }
   };
 
-  // Memoized holidays
-  const holidays = useMemo(() => getGermanHolidays(year, bundesland), [year, bundesland]);
+  // Memoized holidays — covers year-1, year, and year+1 for the expanded timeline
+  const holidays = useMemo(() => {
+    const merged = new Map();
+    for (const y of [year - 1, year, year + 1]) {
+      const h = getGermanHolidays(y, bundesland);
+      h.forEach((name, key) => merged.set(key, name));
+    }
+    return merged;
+  }, [year, bundesland]);
 
   // Get today's date string using proper ISO format
   const todayDate = new Date();
@@ -3376,9 +3415,9 @@ const SAPBasisPlanner = () => {
   // =========================================================================
 
   const renderGanttChart = () => {
-    const yearStart = new Date(year, 0, 1);
-    const yearEnd = new Date(year, 11, 31);
-    const totalDaysInYear = Math.ceil((yearEnd - yearStart) / (1000 * 60 * 60 * 24)) + 1;
+    // 3-year range: year-1 through year+1
+    const rangeStartDate = new Date(year - 1, 0, 1);
+    const rangeEndDate = new Date(year + 1, 11, 31);
     let allDays = [];
     let visibleDays = [];
     let headerCells = [];
@@ -3388,26 +3427,9 @@ const SAPBasisPlanner = () => {
     const todayTime = todayDate.getTime();
     const todayStr = formatDateISO(todayDate);
 
-    // Determine the base date range based on view mode
-    let rangeStart, rangeEnd;
-    if (viewMode === 'year') {
-      rangeStart = yearStart;
-      rangeEnd = yearEnd;
-    } else if (viewMode === 'week') {
-      // Week view: 420 days total, starting 60 days before Jan 1 of the selected year
-      rangeStart = new Date(year, 0, 1);
-      rangeStart.setDate(rangeStart.getDate() - 60);
-      rangeEnd = new Date(rangeStart);
-      rangeEnd.setDate(rangeEnd.getDate() + 419); // 420 days total
-    } else {
-      // Quarter view: show selected quarter
-      rangeStart = new Date(year, (selectedQuarter - 1) * 3, 1);
-      rangeEnd = new Date(year, selectedQuarter * 3, 0);
-    }
-
-    // Calculate if today is in the current range
-    const isTodayInRange = todayTime >= rangeStart.getTime() && todayTime <= rangeEnd.getTime();
-    const todayOffset = isTodayInRange ? Math.max(0, Math.round((todayTime - rangeStart.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+    // Determine the base date range — always the full 3-year window
+    let rangeStart = rangeStartDate;
+    let rangeEnd = rangeEndDate;
 
     // Calculate all days in the range
     const rangeDays = Math.ceil((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)) + 1;
@@ -3417,33 +3439,47 @@ const SAPBasisPlanner = () => {
       allDays.push(date);
     }
 
-    // Apply offset for navigation (slider/buttons)
-    // For week/quarter view: show a window of days that slides across the range
-    const daysToShow = 65; // Number of days visible at once
+    // Calculate if today is in the current range — position today at LEFT edge
+    const isTodayInRange = todayTime >= rangeStart.getTime() && todayTime <= rangeEnd.getTime();
+    const todayOffset = isTodayInRange ? Math.max(0, Math.round((todayTime - rangeStart.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+
+    // Sliding viewport: always show ~65 days
+    const daysToShow = 65;
     const maxOffset = Math.max(0, allDays.length - daysToShow);
     const effectiveOffset = Math.min(viewOffset, maxOffset);
-    const visibleCount = viewMode === 'year' ? allDays.length : Math.min(daysToShow, allDays.length - effectiveOffset);
+    const visibleCount = Math.min(daysToShow, allDays.length - effectiveOffset);
     visibleDays = allDays.slice(effectiveOffset, effectiveOffset + visibleCount);
     dayWidth = 100 / visibleDays.length;
 
-    // Build header cells based on view mode
+    // Build header cells — always use month headers, but show year when month is from a different year
     if (viewMode === 'year') {
-      // Month headers for year view
-      for (let m = 0; m < 12; m++) {
-        const monthStart = new Date(year, m, 1);
-        const monthEnd = new Date(year, m + 1, 0);
+      // Month headers across the full 3-year range
+      for (let y = year - 1; y <= year + 1; y++) {
+        for (let m = 0; m < 12; m++) {
+          const monthStart = new Date(y, m, 1);
+          const monthEnd = new Date(y, m + 1, 0);
 
-        // Find indices in visibleDays
-        const startIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(monthStart));
-        const endIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(monthEnd));
-        if (startIdx >= 0 && endIdx >= 0) {
-          const width = (endIdx - startIdx + 1) / visibleDays.length * 100;
+          // Find indices in visibleDays
+          const startIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(monthStart));
+          let endIdx = visibleDays.findIndex(d => formatDateISO(d) === formatDateISO(monthEnd));
+
+          // Handle partial months at edges of visible window
+          if (startIdx < 0 && endIdx < 0) continue;
+          const effectiveStartIdx = startIdx >= 0 ? startIdx : 0;
+          const effectiveEndIdx = endIdx >= 0 ? endIdx : visibleDays.length - 1;
+
+          // Verify the found range actually belongs to this month
+          if (visibleDays[effectiveStartIdx].getMonth() !== m && visibleDays[effectiveEndIdx].getMonth() !== m) continue;
+          const width = (effectiveEndIdx - effectiveStartIdx + 1) / visibleDays.length * 100;
+          const label = y !== year ? monthStart.toLocaleDateString('de-DE', {
+            month: 'short'
+          }) + ' ' + y : monthStart.toLocaleDateString('de-DE', {
+            month: 'short'
+          });
           headerCells.push({
-            label: monthStart.toLocaleDateString('de-DE', {
-              month: 'short'
-            }),
+            label,
             width,
-            startDay: startIdx
+            startDay: effectiveStartIdx
           });
         }
       }
@@ -3453,10 +3489,12 @@ const SAPBasisPlanner = () => {
       visibleDays.forEach((date, idx) => {
         const weekNum = getISOWeekNumber(date);
         const weekdayIdx = getWeekdayIndex(date);
+        const weekYear = date.getFullYear();
+        const weekKey = `${weekYear}-${weekNum}`;
         if (weekdayIdx === 0 || idx === 0) {
           // Monday or first day
-          if (!weekProcessed.has(weekNum)) {
-            weekProcessed.add(weekNum);
+          if (!weekProcessed.has(weekKey)) {
+            weekProcessed.add(weekKey);
             // Count how many days in this week are visible
             let weekDayCount = 0;
             for (let i = idx; i < visibleDays.length && weekDayCount < 7; i++) {
@@ -4295,13 +4333,18 @@ const SAPBasisPlanner = () => {
     id: "filter-year",
     type: "number",
     value: year,
-    min: "2026",
+    min: "2020",
     max: "2036",
     onChange: e => {
       const val = parseInt(e.target.value);
-      if (val >= 2026 && val <= 2036) {
+      if (val >= 2020 && val <= 2036) {
         setYear(val);
-        setViewOffset(60);
+        // Position viewport at Jan 1 of the selected year
+        // Range starts at Jan 1 of (val - 1), so Jan 1 of val is day 365/366
+        const rangeStart = new Date(val - 1, 0, 1);
+        const jan1OfYear = new Date(val, 0, 1);
+        const offsetToJan1 = Math.round((jan1OfYear - rangeStart) / (1000 * 60 * 60 * 24));
+        setViewOffset(offsetToJan1);
       }
     },
     disabled: !canEdit,
@@ -4381,11 +4424,10 @@ const SAPBasisPlanner = () => {
       const selected = maintenanceSundays.find(s => s.id === selectedId);
       if (!selected || !selected.date) return;
       if (viewMode !== 'week') setViewMode('week');
-      const rangeStart = new Date(year, 0, 1);
-      rangeStart.setDate(rangeStart.getDate() - 60);
+      const rangeStart = new Date(year - 1, 0, 1);
       const targetDate = new Date(selected.date);
       const dayIndex = Math.round((targetDate - rangeStart) / (1000 * 60 * 60 * 24));
-      setViewOffset(Math.max(0, Math.min(420 - 65, dayIndex - 32)));
+      setViewOffset(Math.max(0, dayIndex - 32));
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: "",
@@ -6094,9 +6136,9 @@ const SAPBasisPlanner = () => {
       bereitschaftMap[b.week_start] = b;
     });
 
-    // Build the 14 months: Dec(year-1) ... Jan(year+1)
+    // Build months for the 3-year range: Dec(year-2) ... Jan(year+2) = 38 months
     const months = [];
-    for (let m = -1; m <= 12; m++) {
+    for (let m = -13; m <= 24; m++) {
       const d = new Date(year, m, 1);
       months.push({
         year: d.getFullYear(),
@@ -6127,6 +6169,8 @@ const SAPBasisPlanner = () => {
       return weeks;
     };
     const handleWeekClick = async mondayISO => {
+      // 24-hour rule: prevent edits to past weeks (unless teamlead)
+      if (!isDateEditable(mondayISO)) return;
       const entry = bereitschaftMap[mondayISO];
       if (entry) {
         // Already claimed — only deletable by own user or teamlead
@@ -6226,7 +6270,7 @@ const SAPBasisPlanner = () => {
       className: "flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2"
     }, /*#__PURE__*/React.createElement("h2", {
       className: "text-2xl font-bold text-gray-800"
-    }, "\uD83D\uDD14 Bereitschaftskalender ", year), /*#__PURE__*/React.createElement("div", {
+    }, "\uD83D\uDD14 Bereitschaftskalender ", year - 1, "\u2013", year + 1), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex gap-3 text-xs items-center"
@@ -6382,8 +6426,10 @@ const SAPBasisPlanner = () => {
         cur.setDate(cur.getDate() + 1);
       }
     });
+
+    // Build months for the 3-year range: Dec(year-2) ... Jan(year+2) = 38 months
     const months = [];
-    for (let m = -1; m <= 12; m++) {
+    for (let m = -13; m <= 24; m++) {
       const d = new Date(year, m, 1);
       months.push({
         year: d.getFullYear(),
@@ -6412,6 +6458,8 @@ const SAPBasisPlanner = () => {
       return weeks;
     };
     const handleDeleteUrlaub = async entry => {
+      // 24-hour rule: prevent deleting past vacation entries (unless teamlead)
+      if (!isDateEditable(entry.start_date)) return;
       const canDelete = user?.role === 'teamlead' || Number(entry.user_id) === Number(user?.id);
       if (!canDelete) return;
       if (urlaubPendingDelete === entry.id) {
@@ -6463,6 +6511,11 @@ const SAPBasisPlanner = () => {
       }
       if (urlaubModalEnd < urlaubModalStart) {
         alert('Das Enddatum darf nicht vor dem Startdatum liegen.');
+        return;
+      }
+      // 24-hour rule: prevent creating vacation entries in the past (unless teamlead)
+      if (!isDateEditable(urlaubModalStart)) {
+        alert('Urlaub kann nicht rückwirkend (> 24h) eingetragen werden.');
         return;
       }
       if (user?.role === 'teamlead' && !urlaubModalUserId) {
@@ -6541,7 +6594,7 @@ const SAPBasisPlanner = () => {
       className: "flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2"
     }, /*#__PURE__*/React.createElement("h2", {
       className: "text-2xl font-bold text-gray-800"
-    }, "\uD83C\uDFD6\uFE0F Urlaubsplanung ", year), /*#__PURE__*/React.createElement("div", {
+    }, "\uD83C\uDFD6\uFE0F Urlaubsplanung ", year - 1, "\u2013", year + 1), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex gap-2 text-xs items-center flex-wrap"

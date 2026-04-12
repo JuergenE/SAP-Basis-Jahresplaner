@@ -1130,15 +1130,13 @@ const SAPBasisPlanner = () => {
   const [viewMode, setViewMode] = useState('week');
   const [selectedQuarter, setSelectedQuarter] = useState(1);
   const [viewOffset, setViewOffset] = useState(() => {
-    // Position viewport near today within the 3-year range
-    // Range starts at Jan 1 of (defaultYear - 1)
+    // Position viewport so today is at the LEFT edge
     const defaultYear = 2026;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const rangeStart = new Date(defaultYear - 1, 0, 1);
     const daysSinceRangeStart = Math.round((today - rangeStart) / (1000 * 60 * 60 * 24));
-    // Center today in the viewport (offset by half of daysToShow)
-    return Math.max(0, daysSinceRangeStart - 30);
+    return Math.max(0, daysSinceRangeStart);
   });
   const [collapsedLandscapes, setCollapsedLandscapes] = useState(new Set());
   const [collapsedSids, setCollapsedSids] = useState(new Set());
@@ -1507,11 +1505,11 @@ const SAPBasisPlanner = () => {
       setBPendingDelete(null);
       setShowCsvDropdown(false);
 
-      // Reset Gantt scroll position to "Today" within 3-year range
+      // Reset Gantt scroll position to "Today" at LEFT edge within 3-year range
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const rangeStart = new Date(year - 1, 0, 1);
-      const offset = Math.max(0, Math.round((today - rangeStart) / (1000 * 60 * 60 * 24)) - 30);
+      const offset = Math.max(0, Math.round((today - rangeStart) / (1000 * 60 * 60 * 24)));
       setViewOffset(offset);
 
       setUser(userData);
@@ -2887,9 +2885,9 @@ const SAPBasisPlanner = () => {
       allDays.push(date);
     }
 
-    // Calculate if today is in the current range
+    // Calculate if today is in the current range — position today at LEFT edge
     const isTodayInRange = todayTime >= rangeStart.getTime() && todayTime <= rangeEnd.getTime();
-    const todayOffset = isTodayInRange ? Math.max(0, Math.round((todayTime - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) - 30) : 0;
+    const todayOffset = isTodayInRange ? Math.max(0, Math.round((todayTime - rangeStart.getTime()) / (1000 * 60 * 60 * 24))) : 0;
 
     // Sliding viewport: always show ~65 days
     const daysToShow = 65;
@@ -2996,7 +2994,7 @@ const SAPBasisPlanner = () => {
         onMouseLeave={handleMouseLeave}
         onMouseMove={handleMouseMove}
       >
-        <h2 className="text-xl font-bold mb-4">Gantt-Chart {year - 1}–{year + 1}</h2>
+        <h2 className="text-xl font-bold mb-4">Gantt-Chart {year}</h2>
 
         
         <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-4 border-b border-gray-200 pb-4">
