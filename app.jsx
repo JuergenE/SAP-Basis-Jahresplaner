@@ -250,7 +250,7 @@ class ApiClient {
 
 const api = new ApiClient();
 
-const APP_VERSION_FALLBACK = '0.2.2';
+const APP_VERSION_FALLBACK = '0.2.3';
 
 const bundeslaender = [
   { id: 'BW', name: 'Baden-Württemberg' },
