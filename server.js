@@ -587,6 +587,10 @@ const initDatabase = () => {
     db.exec(`ALTER TABLE team_members ADD COLUMN to_plan_days INTEGER DEFAULT 0`);
     console.log('✓ Added to_plan_days to team_members');
   } catch (e) { }
+  try {
+    db.exec(`ALTER TABLE team_members ADD COLUMN weekly_hours REAL DEFAULT 40`);
+    console.log('✓ Added weekly_hours to team_members');
+  } catch (e) { }
 
   // Migration: Add created_by column to users table
   try {
@@ -1799,6 +1803,23 @@ app.put('/api/activities/:id/archive', authenticate, requireAdmin, (req, res) =>
   }
 });
 
+// Unarchive activity (teamlead only)
+app.put('/api/activities/:id/unarchive', authenticate, requireTeamLead, (req, res) => {
+  const { id } = req.params;
+  try {
+    const activity = db.prepare('SELECT status FROM activities WHERE id = ?').get(id);
+    if (!activity) return res.status(404).json({ error: 'Aktivität nicht gefunden' });
+    if (activity.status !== 'ARCHIVED') return res.status(400).json({ error: 'Aktivität ist nicht archiviert' });
+
+    db.prepare("UPDATE activities SET status = 'COMPLETED' WHERE id = ?").run(id);
+    logAction(req.user.id, req.user.username, 'UNARCHIVE_ACTIVITY', { id });
+    res.json({ success: true, message: 'Aktivität erfolgreich wiederhergestellt' });
+  } catch (error) {
+    console.error('Fehler beim Wiederherstellen:', error);
+    res.status(500).json({ error: 'Datenbankfehler beim Wiederherstellen' });
+  }
+});
+
 // =========================================================================
 // ACTIVITY SERIES ROUTES
 // =========================================================================
@@ -1995,6 +2016,23 @@ app.put('/api/series/:id/occurrences/:occId/archive', authenticate, requireAdmin
   } catch (error) {
     console.error('Fehler beim Archivieren:', error);
     res.status(500).json({ error: 'Datenbankfehler beim Archivieren' });
+  }
+});
+
+// Unarchive occurrence (teamlead only)
+app.put('/api/series/:id/occurrences/:occId/unarchive', authenticate, requireTeamLead, (req, res) => {
+  const { id, occId } = req.params;
+  try {
+    const occ = db.prepare('SELECT status FROM series_occurrences WHERE id = ? AND series_id = ?').get(occId, id);
+    if (!occ) return res.status(404).json({ error: 'Begebenheit nicht gefunden' });
+    if (occ.status !== 'ARCHIVED') return res.status(400).json({ error: 'Begebenheit ist nicht archiviert' });
+
+    db.prepare("UPDATE series_occurrences SET status = 'COMPLETED' WHERE id = ?").run(occId);
+    logAction(req.user.id, req.user.username, 'UNARCHIVE_OCCURRENCE', { occId, seriesId: id });
+    res.json({ success: true, message: 'Termin erfolgreich wiederhergestellt' });
+  } catch (error) {
+    console.error('Fehler beim Wiederherstellen:', error);
+    res.status(500).json({ error: 'Datenbankfehler beim Wiederherstellen' });
   }
 });
 
@@ -2206,6 +2244,23 @@ app.put('/api/sub-activities/:id/archive', authenticate, requireAdmin, (req, res
   }
 });
 
+// Unarchive sub-activity (teamlead only)
+app.put('/api/sub-activities/:id/unarchive', authenticate, requireTeamLead, (req, res) => {
+  const { id } = req.params;
+  try {
+    const subActivity = db.prepare('SELECT status FROM sub_activities WHERE id = ?').get(id);
+    if (!subActivity) return res.status(404).json({ error: 'Sub-Aktivität nicht gefunden' });
+    if (subActivity.status !== 'ARCHIVED') return res.status(400).json({ error: 'Sub-Aktivität ist nicht archiviert' });
+
+    db.prepare("UPDATE sub_activities SET status = 'COMPLETED' WHERE id = ?").run(id);
+    logAction(req.user.id, req.user.username, 'UNARCHIVE_SUBACTIVITY', { id });
+    res.json({ success: true, message: 'Sub-Aktivität erfolgreich wiederhergestellt' });
+  } catch (error) {
+    console.error('Fehler beim Wiederherstellen:', error);
+    res.status(500).json({ error: 'Datenbankfehler beim Wiederherstellen' });
+  }
+});
+
 // =========================================================================
 // TEAM MEMBERS ROUTES
 // =========================================================================
@@ -2244,13 +2299,14 @@ app.post('/api/team-members', authenticate, requireTeamLead, (req, res) => {
   const sortOrder = (maxOrder.max || 0) + 1;
 
   try {
-    const result = db.prepare('INSERT INTO team_members (name, abbreviation, sort_order, working_days, training_days, to_plan_days) VALUES (?, ?, ?, ?, ?, ?)').run(
+    const result = db.prepare('INSERT INTO team_members (name, abbreviation, sort_order, working_days, training_days, to_plan_days, weekly_hours) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
       name,
       abbreviation,
       sortOrder,
       working_days || 0,
       training_days || 0,
-      to_plan_days || 0
+      to_plan_days || 0,
+      req.body.weekly_hours !== undefined ? req.body.weekly_hours : 40
     );
     logAction(req.user.id, req.user.username, 'TEAM_MEMBER_CREATE', { name, abbreviation });
     res.json({
@@ -2260,7 +2316,8 @@ app.post('/api/team-members', authenticate, requireTeamLead, (req, res) => {
       sort_order: sortOrder,
       working_days: working_days || 0,
       training_days: training_days || 0,
-      to_plan_days: to_plan_days || 0
+      to_plan_days: to_plan_days || 0,
+      weekly_hours: req.body.weekly_hours !== undefined ? req.body.weekly_hours : 40
     });
   } catch (error) {
     res.status(400).json({ error: 'Fehler beim Erstellen des Teammitglieds' });
@@ -2290,6 +2347,10 @@ app.put('/api/team-members/:id', authenticate, requireTeamLead, (req, res) => {
   if (req.body.training_days !== undefined) {
     updates.push('training_days = ?');
     values.push(req.body.training_days);
+  }
+  if (req.body.weekly_hours !== undefined) {
+    updates.push('weekly_hours = ?');
+    values.push(parseFloat(req.body.weekly_hours) || 40);
   }
   if (req.body.to_plan_days !== undefined) {
     updates.push('to_plan_days = ?');

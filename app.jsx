@@ -241,6 +241,11 @@ class ApiClient {
   async getUrlaub() { return this.request('/api/urlaub'); }
   async addUrlaub(start_date, end_date, user_id) { return this.request('/api/urlaub', { method: 'POST', body: JSON.stringify({ start_date, end_date, user_id }) }); }
   async deleteUrlaub(id) { return this.request(`/api/urlaub/${id}`, { method: 'DELETE' }); }
+
+  // Unarchive (teamlead only)
+  async unarchiveActivity(id) { return this.request(`/api/activities/${id}/unarchive`, { method: 'PUT' }); }
+  async unarchiveSubActivity(id) { return this.request(`/api/sub-activities/${id}/unarchive`, { method: 'PUT' }); }
+  async unarchiveOccurrence(seriesId, occId) { return this.request(`/api/series/${seriesId}/occurrences/${occId}/unarchive`, { method: 'PUT' }); }
 }
 
 const api = new ApiClient();
@@ -725,7 +730,7 @@ const UploadIcon = () => (
 // =========================================================================
 // SERIES POPUP EDITOR COMPONENT
 // =========================================================================
-const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, api, onClose }) => {
+const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, user, year, api, onClose }) => {
   const seriesType = activityTypes.find(t => t.id === series.typeId);
   const [localRule, setLocalRule] = useState({ type: series.ruleType || 'manual', value: series.ruleValue || 0, startDate: series.ruleStartDate || '', endDate: series.ruleEndDate || '' });
   const [localOccs, setLocalOccs] = useState(series.occurrences || []);
@@ -871,6 +876,14 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
     } catch (e) { alert('Fehler: ' + e.message); }
   };
 
+  const handleUnarchiveOcc = async (occId) => {
+    try {
+      if (!(await showConfirm('Termin wirklich wiederherstellen? Er wird auf "Abgeschlossen" zurückgesetzt.'))) return;
+      await api.unarchiveOccurrence(series.id, occId);
+      setLocalOccs(prev => prev.map(o => o.id === occId ? { ...o, status: 'COMPLETED' } : o));
+    } catch (e) { alert('Fehler: ' + e.message); }
+  };
+
   const handleClose = async () => {
     setSaving(true);
     try {
@@ -980,7 +993,13 @@ const SeriesPopupEditor = ({ series, activityTypes, teamMembers, canEdit, year, 
                           {occ.status === 'COMPLETED' && (
                             <button onClick={() => handleArchiveOcc(occ.id)} className="w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm" title="Termin archivieren">📦</button>
                           )}
-                          {occ.status === 'ARCHIVED' && (
+                          {occ.status === 'ARCHIVED' && user?.role === 'teamlead' && (
+                            <>
+                              <button onClick={() => handleUnarchiveOcc(occ.id)} className="w-6 h-6 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors" title="Termin wiederherstellen">🔄</button>
+                              <button onClick={() => handleDeleteOcc(occ.id)} className="w-6 h-6 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors" title="Termin unwiderruflich löschen"><TrashIcon /></button>
+                            </>
+                          )}
+                          {occ.status === 'ARCHIVED' && user?.role !== 'teamlead' && (
                             <div className="w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale" title="Archiviert">📦</div>
                           )}
                         </>
@@ -1110,6 +1129,7 @@ const SAPBasisPlanner = () => {
   const [activeTab, setActiveTab] = useState('gantt'); // 'gantt', 'team', 'skills', 'bereitschaft', 'auswertung'
   // Auswertung (Analysis) tab filter
   const [auswertungFilter, setAuswertungFilter] = useState({ type: 'year', value: '' });
+  const [auswertungSubTab, setAuswertungSubTab] = useState('stats'); // 'stats' | 'heatmap'
   // Auswertung chart refs (must be at top level to satisfy Rules of Hooks)
   const pieCanvasRef = React.useRef(null);
   const barCanvasRef = React.useRef(null);
@@ -1146,6 +1166,8 @@ const SAPBasisPlanner = () => {
   const [urlaubModalUserId, setUrlaubModalUserId] = useState('');
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showToolsDropdown, setShowToolsDropdown] = useState(false);
 
   // --- Drag-to-Scroll State & Handlers (uses scrollContainerRef) ---
   const scrollContainerRef = useRef(null);
@@ -2082,6 +2104,29 @@ const SAPBasisPlanner = () => {
     });
   };
 
+  const unarchiveActivity = async (landscapeId, sidId, activityId) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: 'Aktivität wiederherstellen',
+      message: 'Möchten Sie diese Aktivität wirklich wiederherstellen? Der Status wird auf "Abgeschlossen" zurückgesetzt.',
+      onConfirm: async () => {
+        try {
+          await api.unarchiveActivity(activityId);
+          setLandscapes(landscapes.map(l =>
+            l.id === landscapeId ? {
+              ...l,
+              sids: l.sids.map(s =>
+                s.id === sidId ? { ...s, activities: s.activities.map(a => a.id === activityId ? { ...a, status: 'COMPLETED' } : a) } : s
+              )
+            } : l
+          ));
+        } catch (error) {
+          alert('Fehler: ' + error.message);
+        }
+      }
+    });
+  };
+
   // Convert activity to series
   const convertToSeries = async (landscapeId, sidId, activityId) => {
     if (!canEdit) return;
@@ -2264,6 +2309,33 @@ const SAPBasisPlanner = () => {
     } catch (error) {
       alert('Fehler: ' + error.message);
     }
+  };
+
+  const unarchiveSubActivity = async (landscapeId, sidId, activityId, subActivityId) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: 'Sub-Aktivität wiederherstellen',
+      message: 'Sub-Aktivität wirklich wiederherstellen? Der Status wird auf "Abgeschlossen" zurückgesetzt.',
+      onConfirm: async () => {
+        try {
+          await api.unarchiveSubActivity(subActivityId);
+          setLandscapes(landscapes.map(l =>
+            l.id === landscapeId ? {
+              ...l,
+              sids: l.sids.map(s =>
+                s.id === sidId ? {
+                  ...s, activities: s.activities.map(a =>
+                    a.id === activityId ? { ...a, subActivities: (a.subActivities || []).map(sub => sub.id === subActivityId ? { ...sub, status: 'COMPLETED' } : sub) } : a
+                  )
+                } : s
+              )
+            } : l
+          ));
+        } catch (error) {
+          alert('Fehler: ' + error.message);
+        }
+      }
+    });
   };
 
   const updateSubActivity = async (landscapeId, sidId, activityId, subActivityId, field, value) => {
@@ -2889,6 +2961,94 @@ const SAPBasisPlanner = () => {
       >
         <h2 className="text-xl font-bold mb-4">Gantt-Chart {year}</h2>
 
+        
+        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-4 border-b border-gray-200 pb-4">
+          <div>
+            {/* Legend - visible only when Gantt tab is active */}
+        <div className="mb-4" >
+          <div className="flex items-center gap-3 mb-2">
+            <h3 className="font-semibold">Aktivitätstypen:</h3>
+            {canEdit && (
+              <button
+                onClick={addActivityType}
+                className="text-sm px-2 py-1 border border-gray-300 rounded hover:bg-gray-100"
+              >
+                + Aktivität hinzufügen
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {activityTypes.map(type => (
+              <div key={type.id} className="flex items-center gap-2 group">
+                <div className="w-4 h-4 rounded" style={{ backgroundColor: type.color }}></div>
+                {canEdit && editingTypeId === type.id ? (
+                  <input name="autoField_2"
+                    type="text"
+                    value={type.label}
+                    onChange={(e) => renameActivityType(type.id, e.target.value)}
+                    onBlur={() => setEditingTypeId(null)}
+                    onKeyDown={(e) => e.key === 'Enter' && setEditingTypeId(null)}
+                    className="text-sm px-1 border border-blue-400 rounded w-32"
+                    autoFocus
+                    maxLength="24"
+                  />
+                ) : (
+                  <span
+                    className={`text-sm ${canEdit ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                    onClick={() => canEdit && setEditingTypeId(type.id)}
+                    title={canEdit ? 'Klicken zum Umbenennen' : ''}
+                  >
+                    {type.label}
+                  </span>
+                )}
+                {canEdit && (
+                  <button
+                    onClick={() => deleteActivityType(type.id)}
+                    className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 text-xs"
+                    title="Löschen"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-200">
+            <div className="flex items-center gap-2 mr-4 font-bold text-gray-700">
+              Zeichenschlüssel:
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 weekend-pattern border border-gray-300"></div>
+              <span className="text-sm">Wochenende</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 holiday-pattern border border-gray-300"></div>
+              <span className="text-sm">Feiertag</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 today-marker border border-gray-300"></div>
+              <span className="text-sm">Heute ({formatDateDE(today)})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 maintenance-pattern border border-purple-400"></div>
+              <span className="text-sm">Wartungssonntag</span>
+            </div>
+            <div className="flex items-center gap-2 ml-4">
+              <div className="relative h-6 w-24 flex items-center">
+                <div className="absolute inset-x-0 top-1 bottom-1 border border-pink-500 rounded z-0"></div>
+                <div className="absolute left-0 top-1 bottom-1 w-3 bg-pink-500 rounded-l z-10 text-[8px] text-white flex items-center justify-center">S..</div>
+                <div className="absolute left-3 right-8 top-1 bottom-1 weekend-pattern opacity-50 z-0"></div>
+                <div className="absolute right-0 top-1 bottom-1 w-8 bg-pink-500 rounded-r z-10"></div>
+              </div>
+              <span className="text-sm">Zusammenhängende Aktivität</span>
+            </div>
+          </div>
+        </div>
+
+        
+          </div>
+        </div>
+        
         {/* Navigation Controls */}
         <div className="flex items-center gap-2 mb-4 flex-wrap w-1/2">
           <button
@@ -2946,14 +3106,14 @@ const SAPBasisPlanner = () => {
 
         <div
           ref={scrollContainerRef}
-          className={`min-w-max overflow-auto ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
+          className={`min-w-max overflow-auto max-h-[65vh] snap-y snap-mandatory scroll-smooth pb-12 ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`}
           onMouseDown={handleMouseDown}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
           onMouseMove={handleMouseMove}
         >
           {/* Header Row */}
-          <div className="flex border-b-2 border-gray-300 mb-2">
+          <div className="flex border-b-2 border-gray-300 mb-2 sticky top-0 z-30 bg-white shadow-sm">
             <div className="gantt-row-label min-w-48 font-semibold p-2 bg-gray-50">
               Systemlandschaft / SID
             </div>
@@ -3088,7 +3248,7 @@ const SAPBasisPlanner = () => {
             const visibleSids = landscape.sids.filter(sid => sid.visibleInGantt !== false);
             if (visibleSids.length === 0) return null;
             return (
-              <div key={landscape.id} className="mb-4">
+              <div key={landscape.id} className="mb-4 snap-start scroll-mt-20">
                 <div className="font-semibold text-lg mb-1 text-blue-700 px-2">
                   {landscape.name}
                 </div>
@@ -3165,7 +3325,7 @@ const SAPBasisPlanner = () => {
                   };
 
                   return (
-                    <div key={sid.id} className="flex items-stretch">
+                    <div key={sid.id} className="flex items-stretch snap-start scroll-mt-20">
                       <div className={`gantt-row-label min-w-48 pl-4 text-sm flex items-center gap-1 py-1 border-b ${viewMode === 'year' ? 'border-gray-400' : 'border-gray-100'}`}>
                         <span className={(sid.systemType === 'PRD' || sid.isPRD) ? 'font-bold text-red-600' : ''}>
                           {sid.name || 'Neue SID'}
@@ -3476,243 +3636,189 @@ const SAPBasisPlanner = () => {
         </div>
       )}
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="bg-white rounded-lg shadow-lg p-4 md:p-6 mb-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-            <div className="flex items-center gap-3">
+        {/* Header (Bereich 1) */}
+        <div className="bg-white rounded-lg shadow-md p-3 mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
               <CalendarIcon />
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-800">SAP Basis Jahresplaner</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-800">SAP Basis Jahresplaner</h1>
             </div>
-            <div className="flex gap-2 flex-wrap header-controls items-center">
-              <span className="text-sm text-gray-600">
-                {user.username} ({user.role === 'teamlead' ? 'Teamleiter' : user.role === 'admin' ? 'Administrator' : user.role === 'viewer' ? 'Viewer' : 'Benutzer'})
-              </span>
-              <button onClick={() => setShowPasswordDialog(true)} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded">
-                🔑 Passwort
+            
+            <div className="flex gap-2 items-center flex-wrap">
+              <button onClick={handleRefresh} className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md hover:bg-blue-100 text-sm" title="Daten vom Server aktualisieren">
+                 🔄 Aktualisieren
               </button>
               {canEdit && (
-                <button onClick={openUserDialog} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded">
-                  👥 Benutzer
-                </button>
+                 <button onClick={saveSettings} className="px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm flex items-center gap-1">
+                   <SaveIcon /> Speichern
+                 </button>
               )}
-              <button onClick={handleLogout} className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded">
-                Abmelden
-              </button>
-              {canEdit && (
-                <button onClick={saveSettings} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
-                  <SaveIcon /> Einstellungen speichern
+              
+              {/* Tools Dropdown */}
+              <div className="relative">
+                <button onClick={() => { setShowToolsDropdown(!showToolsDropdown); setShowProfileDropdown(false); setShowCsvDropdown(false); setShowDataDropdown(false); }} className="px-3 py-1.5 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 text-sm flex items-center gap-1">
+                  🛠️ Werkzeuge ▾
                 </button>
-              )}
-              <button onClick={handleRefresh} className="flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-200 text-sm" title="Daten vom Server aktualisieren">
-                🔄 Aktualisieren
-              </button>
-              {/* CSV Export Dropdown */}
-              <div className="relative" style={{ position: 'relative' }}>
-                <button
-                  onClick={() => { setShowCsvDropdown(!showCsvDropdown); setShowDataDropdown(false); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
-                >
-                  <DownloadIcon /> CSV Export ▾
-                </button>
-                {showCsvDropdown && (
-                  <div className="csv-dropdown-panel absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-48" style={{ zIndex: 9999 }}>
-                    <button
-                      onClick={() => { exportCSV(); setShowCsvDropdown(false); }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-t-lg flex items-center gap-2"
-                    >
-                      📊 Gantt-Ansicht
+                {showToolsDropdown && (
+                  <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1">
+                    <button onClick={() => { setShowCsvDropdown(!showCsvDropdown); setShowDataDropdown(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between">
+                      <span>📊 CSV Export</span> <span>{showCsvDropdown ? '▴' : '▾'}</span>
                     </button>
-                    {user?.role !== 'viewer' && (
-                      <button
-                        onClick={() => { exportSkillsCSV(); setShowCsvDropdown(false); }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 border-t border-gray-100"
-                      >
-                        🎓 Skills & Schulungen
-                      </button>
+                    {showCsvDropdown && (
+                      <div className="bg-gray-50 border-y border-gray-100">
+                        <button onClick={() => { exportCSV(); setShowCsvDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">Gantt-Ansicht</button>
+                        {user?.role !== 'viewer' && (
+                          <button onClick={() => { exportSkillsCSV(); setShowCsvDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">Skills & Schulungen</button>
+                        )}
+                        {user?.role !== 'viewer' && (
+                          <button onClick={() => { exportBereitschaftCSV(); setShowCsvDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">Bereitschaft</button>
+                        )}
+                        {(user?.role === 'admin' || user?.role === 'teamlead') && (
+                          <button onClick={() => { exportTeamCSV(); setShowCsvDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">Team-Auslastung</button>
+                        )}
+                      </div>
                     )}
-                    {user?.role !== 'viewer' && (
-                      <button
-                        onClick={() => { exportBereitschaftCSV(); setShowCsvDropdown(false); }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 border-t border-gray-100"
-                      >
-                        🔔 Bereitschaft
-                      </button>
+                    
+                    {(user?.role === 'teamlead' || user?.role === 'admin') && (
+                      <>
+                        <button onClick={() => { setShowDataDropdown(!showDataDropdown); setShowCsvDropdown(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between border-t border-gray-100">
+                          <span>🔒 Datensicherung</span> <span>{showDataDropdown ? '▴' : '▾'}</span>
+                        </button>
+                        {showDataDropdown && (
+                          <div className="bg-gray-50 border-y border-gray-100">
+                            <button onClick={() => { exportJSON(); setShowDataDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">📤 JSON Export</button>
+                            <button type="button" onClick={() => document.getElementById('jsonImportInput').click()} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">📥 JSON Import</button>
+                            {user?.role === 'teamlead' && (
+                              <>
+                                <button onClick={async () => {
+                                      setShowDataDropdown(false);
+                                      setShowToolsDropdown(false);
+                                      try {
+                                        const backup = await api.exportBackup();
+                                        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `SAP-Planner-Backup-${new Date().toISOString().slice(0, 10)}.json`;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        document.body.removeChild(a);
+                                        setTimeout(() => URL.revokeObjectURL(url), 100);
+                                      } catch (error) {
+                                        alert('❌ Fehler beim Backup: ' + error.message);
+                                      }
+                                    }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">📥 Backup DB</button>
+                                <button type="button" onClick={() => document.getElementById('restoreBackupInput').click()} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">📤 Restore DB</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </>
                     )}
-                    {(user?.role === 'admin' || user?.role === 'teamlead') && (
-                      <button
-                        onClick={() => { exportTeamCSV(); setShowCsvDropdown(false); }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
-                      >
-                        👥 Team-Auslastung
+                    
+                    {canEdit && (
+                      <button onClick={() => { openLogsDialog(); setShowToolsDropdown(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-t border-gray-100">
+                        📋 Logfiles
                       </button>
                     )}
                   </div>
                 )}
-                {/* Click-outside closes dropdown */}
-                {showCsvDropdown && (
-                  <div
-                    className="fixed inset-0"
-                    style={{ zIndex: 9998 }}
-                    onClick={() => setShowCsvDropdown(false)}
-                  />
+                {/* Click-outside for Tools */}
+                {showToolsDropdown && (
+                  <div className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setShowToolsDropdown(false)} />
+                )}
+                
+                {/* Hidden File Inputs */}
+                <input id="jsonImportInput" type="file" accept=".json,application/json" onChange={(e) => { importJSON(e); setShowDataDropdown(false); setShowToolsDropdown(false); }} className="hidden" />
+                <input id="restoreBackupInput" type="file" accept=".json,application/json" onChange={async (event) => {
+                  setShowDataDropdown(false);
+                  setShowToolsDropdown(false);
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const text = await file.text();
+                    const backup = JSON.parse(text);
+                    if (!backup.version) {
+                      alert('❌ Ungültige Backup-Datei: Version fehlt');
+                      return;
+                    }
+                    if (confirm(`Backup importieren?\n\nBackup-Version: ${backup.version}\nExport-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n\n⚠️ Alle aktuellen Daten werden überschrieben!`)) {
+                      const result = await api.importBackup(backup);
+                      alert(`✅ Backup erfolgreich importiert!`);
+                      window.location.reload();
+                    }
+                  } catch (error) {
+                    alert('❌ Fehler beim Import: ' + error.message);
+                  }
+                  event.target.value = '';
+                }} className="hidden" />
+              </div>
+
+              {/* Profile Dropdown */}
+              <div className="relative">
+                <button onClick={() => { setShowProfileDropdown(!showProfileDropdown); setShowToolsDropdown(false); }} className="px-3 py-1.5 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 text-sm flex items-center gap-1">
+                  👤 {user.username} ▾
+                </button>
+                {showProfileDropdown && (
+                  <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1">
+                    <div className="px-4 py-2 border-b border-gray-100 text-xs text-gray-500">
+                      Rolle: {user.role === 'teamlead' ? 'Teamleiter' : user.role === 'admin' ? 'Administrator' : user.role === 'viewer' ? 'Viewer' : 'Benutzer'}
+                    </div>
+                    <button onClick={() => { setShowPasswordDialog(true); setShowProfileDropdown(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50">🔑 Passwort</button>
+                    {canEdit && (
+                      <button onClick={() => { openUserDialog(); setShowProfileDropdown(false); }} className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50">👥 Benutzer</button>
+                    )}
+                    <button onClick={handleLogout} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100">Abmelden</button>
+                  </div>
+                )}
+                {showProfileDropdown && (
+                  <div className="fixed inset-0" style={{ zIndex: 40 }} onClick={() => setShowProfileDropdown(false)} />
                 )}
               </div>
-              {/* Datensicherung Dropdown - Admin + Teamlead */}
-              {(user?.role === 'teamlead' || user?.role === 'admin') && (
-                <div className="relative" style={{ position: 'relative' }}>
-                  <button
-                    onClick={() => { setShowDataDropdown(!showDataDropdown); setShowCsvDropdown(false); }}
-                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-                  >
-                    🔒 Datensicherung ▾
-                  </button>
-                  {showDataDropdown && (
-                    <div className="data-dropdown-panel absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-52" style={{ zIndex: 9999 }}>
-                      <button
-                        onClick={() => { exportJSON(); setShowDataDropdown(false); }}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-t-lg flex items-center gap-2"
-                      >
-                        📤 JSON Export
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => document.getElementById('jsonImportInput').click()}
-                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 border-t border-gray-100"
-                      >
-                        📥 JSON Import
-                      </button>
-                      <input id="jsonImportInput" type="file" accept=".json,application/json" onChange={(e) => { importJSON(e); setShowDataDropdown(false); }} className="hidden" />
-                      {user?.role === 'teamlead' && (
-                        <button
-                          onClick={async () => {
-                            setShowDataDropdown(false);
-                            try {
-                              const backup = await api.exportBackup();
-                              const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `SAP-Planner-Backup-${new Date().toISOString().slice(0, 10)}.json`;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                              setTimeout(() => URL.revokeObjectURL(url), 100);
-                            } catch (error) {
-                              alert('❌ Fehler beim Backup: ' + error.message);
-                            }
-                          }}
-                          className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 border-t border-gray-100"
-                        >
-                          📥 Backup
-                        </button>
-                      )}
-                      {user?.role === 'teamlead' && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => document.getElementById('restoreBackupInput').click()}
-                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
-                          >
-                            📤 Restore
-                          </button>
-                          <input id="restoreBackupInput" type="file" accept=".json,application/json" onChange={async (event) => {
-                            setShowDataDropdown(false);
-                            const file = event.target.files?.[0];
-                            if (!file) return;
-                            try {
-                              const text = await file.text();
-                              const backup = JSON.parse(text);
-                              if (!backup.version) {
-                                alert('❌ Ungültige Backup-Datei: Version fehlt');
-                                return;
-                              }
-                              const confirmed = confirm(
-                                `Backup importieren?\n\n` +
-                                `Backup-Version: ${backup.version}\n` +
-                                `Export-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n\n` +
-                                `⚠️ Alle aktuellen Daten werden überschrieben!`
-                              );
-                              if (confirmed) {
-                                const result = await api.importBackup(backup);
-                                alert(
-                                  `✅ Backup erfolgreich importiert!\n\n` +
-                                  `Importierte Daten:\n` +
-                                  Object.entries(result.imported || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n')
-                                );
-                                window.location.reload();
-                              }
-                            } catch (error) {
-                              alert('❌ Fehler beim Import: ' + error.message);
-                            }
-                            event.target.value = '';
-                          }} className="hidden" />
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {/* Click-outside closes dropdown */}
-                  {showDataDropdown && (
-                    <div
-                      className="fixed inset-0"
-                      style={{ zIndex: 9998 }}
-                      onClick={() => setShowDataDropdown(false)}
-                    />
-                  )}
-                </div>
-              )}
-              {/* Logfiles - Admin + Teamlead */}
-              {canEdit && (
-                <button onClick={openLogsDialog} className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm">
-                  📋 Logfiles
-                </button>
-              )}
+              
               <button
                 onClick={toggleDarkMode}
-                className="dark-toggle"
+                className="dark-toggle ml-1"
                 title={darkMode ? 'Heller Modus' : 'Dunkler Modus (Dracula)'}
                 aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
               />
             </div>
           </div>
 
-          {/* Settings */}
-          <div className="flex gap-4 items-end flex-wrap">
-            <div>
-              <label htmlFor="filter-year" className="block text-sm font-medium text-gray-700 mb-1">Jahr</label>
+          {/* Settings / Filters Row */}
+          <div className="flex flex-wrap items-center gap-3 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+            <div className="flex items-center gap-2">
+              <label htmlFor="filter-year" className="text-sm font-medium text-gray-700">Jahr</label>
               <input name="filterYear" id="filter-year" type="number"
-                value={year}
-                min="2026"
-                max="2036"
+                value={year} min="2026" max="2036"
                 onChange={(e) => {
                   const val = parseInt(e.target.value);
-                  if (val >= 2026 && val <= 2036) {
-                    setYear(val);
-                    setViewOffset(60); // Reset to Jan 1 of the new year
-                  }
+                  if (val >= 2026 && val <= 2036) { setYear(val); setViewOffset(60); }
                 }}
                 disabled={!canEdit}
-                className={`px-4 py-2 border border-gray-300 rounded-lg w-24 ${!canEdit ? 'bg-gray-100' : ''}`}
+                className={`px-2 py-1 border border-gray-300 rounded-md w-20 text-sm ${!canEdit ? 'bg-gray-100' : ''}`}
               />
             </div>
+            
+            <div className="w-px h-6 bg-gray-300 mx-1 hidden sm:block"></div>
 
-            <div>
-              <label htmlFor="filter-bundesland" className="block text-sm font-medium text-gray-700 mb-1">Bundesland</label>
+            <div className="flex items-center gap-2">
+              <label htmlFor="filter-bundesland" className="text-sm font-medium text-gray-700">Bundesland</label>
               <select name="filterBundesland" id="filter-bundesland" value={bundesland}
-                onChange={(e) => setBundesland(e.target.value)}
-                disabled={!canEdit}
-                className={`px-4 py-2 border border-gray-300 rounded-lg ${!canEdit ? 'bg-gray-100 appearance-none' : ''}`}
+                onChange={(e) => setBundesland(e.target.value)} disabled={!canEdit}
+                className={`px-2 py-1 border border-gray-300 rounded-md text-sm max-w-[150px] truncate ${!canEdit ? 'bg-gray-100 appearance-none' : ''}`}
               >
-                {bundeslaender.map(bl => (
-                  <option key={bl.id} value={bl.id}>{bl.name}</option>
-                ))}
+                {bundeslaender.map(bl => <option key={bl.id} value={bl.id}>{bl.name}</option>)}
               </select>
             </div>
 
-            <div>
-              <label htmlFor="filter-ansicht" className="block text-sm font-medium text-gray-700 mb-1">Ansicht</label>
+            <div className="w-px h-6 bg-gray-300 mx-1 hidden sm:block"></div>
+
+            <div className="flex items-center gap-2">
+              <label htmlFor="filter-ansicht" className="text-sm font-medium text-gray-700">Ansicht</label>
               <select name="filterViewMode" id="filter-ansicht" value={viewMode}
                 onChange={(e) => { setViewMode(e.target.value); setViewOffset(0); }}
-                className="px-4 py-2 border border-gray-300 rounded-lg"
+                className="px-2 py-1 border border-gray-300 rounded-md text-sm"
               >
                 <option value="year">Jahresansicht</option>
                 <option value="quarter">Quartalsansicht</option>
@@ -3721,68 +3827,52 @@ const SAPBasisPlanner = () => {
             </div>
 
             {(viewMode === 'quarter' || viewMode === 'week') && (
-              <div>
-                <label htmlFor="filter-quartal" className="block text-sm font-medium text-gray-700 mb-1">Quartal</label>
+              <div className="flex items-center gap-2">
                 <select name="filterQuarter" id="filter-quartal" value={selectedQuarter}
                   onChange={(e) => { setSelectedQuarter(parseInt(e.target.value)); setViewOffset(0); }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  className="px-2 py-1 border border-gray-300 rounded-md text-sm"
                 >
-                  <option value={1}>Q1 (Jan-Mär)</option>
-                  <option value={2}>Q2 (Apr-Jun)</option>
-                  <option value={3}>Q3 (Jul-Sep)</option>
-                  <option value={4}>Q4 (Okt-Dez)</option>
+                  <option value={1}>Q1</option>
+                  <option value={2}>Q2</option>
+                  <option value={3}>Q3</option>
+                  <option value={4}>Q4</option>
                 </select>
               </div>
             )}
 
-            {/* Wartungssonntag Selector */}
-            <div>
-              <label htmlFor="filter-wartungssonntag" className="block text-sm font-medium text-gray-700 mb-1">Wartungssonntag</label>
-              <div className="flex gap-2">
-                <select name="filterMaintenanceSunday" id="filter-wartungssonntag" className="px-4 py-2 border border-gray-300 rounded-lg bg-purple-50"
-                  defaultValue=""
-                  onChange={(e) => {
-                    const selectedId = parseInt(e.target.value);
-                    const selected = maintenanceSundays.find(s => s.id === selectedId);
-                    if (!selected || !selected.date) return;
+            <div className="w-px h-6 bg-gray-300 mx-1 hidden sm:block"></div>
 
-                    // Ensure week view mode for offset-based navigation
-                    if (viewMode !== 'week') setViewMode('week');
-
-                    // Calculate offset: rangeStart is 60 days before today
-                    // Calculate offset: rangeStart is 60 days before Jan 1 of selected year
-                    const rangeStart = new Date(year, 0, 1);
-                    rangeStart.setDate(rangeStart.getDate() - 60);
-                    const targetDate = new Date(selected.date);
-                    const dayIndex = Math.round((targetDate - rangeStart) / (1000 * 60 * 60 * 24));
-                    const daysToShow = 65;
-                    const totalDays = 420;
-                    const centerOffset = Math.max(0, Math.min(totalDays - daysToShow, dayIndex - Math.floor(daysToShow / 2)));
-                    setViewOffset(centerOffset);
-                  }}
-                >
-                  <option value="" disabled>Auswählen...</option>
-                  {maintenanceSundays.filter(s => s.date).map(s => (
-                    <option key={s.id} value={s.id}>
-                      {['I', 'II', 'III', 'IV'][s.id - 1]} - {formatDateDE(s.date)}
-                    </option>
-                  ))}
-                </select>
-                {canEdit && (
-                  <button
-                    onClick={openMaintenanceDialog}
-                    className="px-3 py-2 text-purple-700 border border-purple-300 rounded-lg hover:bg-purple-50 text-sm"
-                    title="Wartungssonntage bearbeiten"
-                  >
-                    ⚙️
-                  </button>
-                )}
-              </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="filter-wartungssonntag" className="text-sm font-medium text-gray-700">Wartungssonntag</label>
+              <select name="filterMaintenanceSunday" id="filter-wartungssonntag" className="px-2 py-1 border border-gray-300 rounded-md bg-purple-50 text-sm max-w-[150px] truncate"
+                defaultValue=""
+                onChange={(e) => {
+                  const selectedId = parseInt(e.target.value);
+                  const selected = maintenanceSundays.find(s => s.id === selectedId);
+                  if (!selected || !selected.date) return;
+                  if (viewMode !== 'week') setViewMode('week');
+                  const rangeStart = new Date(year, 0, 1);
+                  rangeStart.setDate(rangeStart.getDate() - 60);
+                  const targetDate = new Date(selected.date);
+                  const dayIndex = Math.round((targetDate - rangeStart) / (1000 * 60 * 60 * 24));
+                  setViewOffset(Math.max(0, Math.min(420 - 65, dayIndex - 32)));
+                }}
+              >
+                <option value="" disabled>Auswählen...</option>
+                {maintenanceSundays.filter(s => s.date).map(s => (
+                  <option key={s.id} value={s.id}>{['I', 'II', 'III', 'IV'][s.id - 1]} - {formatDateDE(s.date)}</option>
+                ))}
+              </select>
+              {canEdit && (
+                <button onClick={openMaintenanceDialog} className="px-2 py-1 text-purple-700 border border-purple-300 rounded-md hover:bg-purple-50 text-xs text-center leading-none" title="Wartungssonntage bearbeiten">
+                  ⚙️
+                </button>
+              )}
             </div>
           </div>
         </div>
-
-        {/* Tab Navigation */}
+        
+{/* Tab Navigation */}
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setActiveTab('gantt')}
@@ -3848,87 +3938,6 @@ const SAPBasisPlanner = () => {
               📈 Auswertung
             </button>
           )}
-        </div>
-
-        {/* Legend - visible only when Gantt tab is active */}
-        <div className="bg-white rounded-lg shadow-lg p-4 mb-6" style={{ display: activeTab === 'gantt' ? 'block' : 'none' }}>
-          <div className="flex items-center gap-3 mb-2">
-            <h3 className="font-semibold">Aktivitätstypen:</h3>
-            {canEdit && (
-              <button
-                onClick={addActivityType}
-                className="text-sm px-2 py-1 border border-gray-300 rounded hover:bg-gray-100"
-              >
-                + Aktivität hinzufügen
-              </button>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {activityTypes.map(type => (
-              <div key={type.id} className="flex items-center gap-2 group">
-                <div className="w-4 h-4 rounded" style={{ backgroundColor: type.color }}></div>
-                {canEdit && editingTypeId === type.id ? (
-                  <input name="autoField_2"
-                    type="text"
-                    value={type.label}
-                    onChange={(e) => renameActivityType(type.id, e.target.value)}
-                    onBlur={() => setEditingTypeId(null)}
-                    onKeyDown={(e) => e.key === 'Enter' && setEditingTypeId(null)}
-                    className="text-sm px-1 border border-blue-400 rounded w-32"
-                    autoFocus
-                    maxLength="24"
-                  />
-                ) : (
-                  <span
-                    className={`text-sm ${canEdit ? 'cursor-pointer hover:text-blue-600' : ''}`}
-                    onClick={() => canEdit && setEditingTypeId(type.id)}
-                    title={canEdit ? 'Klicken zum Umbenennen' : ''}
-                  >
-                    {type.label}
-                  </span>
-                )}
-                {canEdit && (
-                  <button
-                    onClick={() => deleteActivityType(type.id)}
-                    className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 text-xs"
-                    title="Löschen"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-200">
-            <div className="flex items-center gap-2 mr-4 font-bold text-gray-700">
-              Zeichenschlüssel:
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 weekend-pattern border border-gray-300"></div>
-              <span className="text-sm">Wochenende</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 holiday-pattern border border-gray-300"></div>
-              <span className="text-sm">Feiertag</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 today-marker border border-gray-300"></div>
-              <span className="text-sm">Heute ({formatDateDE(today)})</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 maintenance-pattern border border-purple-400"></div>
-              <span className="text-sm">Wartungssonntag</span>
-            </div>
-            <div className="flex items-center gap-2 ml-4">
-              <div className="relative h-6 w-24 flex items-center">
-                <div className="absolute inset-x-0 top-1 bottom-1 border border-pink-500 rounded z-0"></div>
-                <div className="absolute left-0 top-1 bottom-1 w-3 bg-pink-500 rounded-l z-10 text-[8px] text-white flex items-center justify-center">S..</div>
-                <div className="absolute left-3 right-8 top-1 bottom-1 weekend-pattern opacity-50 z-0"></div>
-                <div className="absolute right-0 top-1 bottom-1 w-8 bg-pink-500 rounded-r z-10"></div>
-              </div>
-              <span className="text-sm">Zusammenhängende Aktivität</span>
-            </div>
-          </div>
         </div>
 
         {/* Gantt Chart */}
@@ -4290,11 +4299,20 @@ const SAPBasisPlanner = () => {
                                     </button>
                                   )}
                                   {activity.status === 'COMPLETED' && (
-                                    <button onClick={() => archiveActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-stone-200 text-stone-700 border border-stone-300 rounded hover:bg-stone-300 transition-colors shadow-sm" title="Aktivität archivieren (Einfrieren)">
-                                      📦
-                                    </button>
+                                    <>
+                                      <button onClick={() => archiveActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-stone-200 text-stone-700 border border-stone-300 rounded hover:bg-stone-300 transition-colors shadow-sm" title="Aktivität archivieren (Einfrieren)">📦</button>
+                                      {user?.role === 'teamlead' && (
+                                        <button onClick={() => deleteActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200" title="Aktivität unwiderruflich löschen"><TrashIcon /></button>
+                                      )}
+                                    </>
                                   )}
-                                  {activity.status === 'ARCHIVED' && (
+                                  {activity.status === 'ARCHIVED' && user?.role === 'teamlead' && (
+                                    <>
+                                      <button onClick={() => unarchiveActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors" title="Aktivität wiederherstellen">🔄</button>
+                                      <button onClick={() => deleteActivity(landscape.id, sid.id, activity.id)} className="flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200" title="Aktivität unwiderruflich löschen"><TrashIcon /></button>
+                                    </>
+                                  )}
+                                  {activity.status === 'ARCHIVED' && user?.role !== 'teamlead' && (
                                     <div className="flex items-center justify-center w-8 h-8 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded cursor-not-allowed shadow-none grayscale" title="Archiviert">
                                       📦
                                     </div>
@@ -4402,9 +4420,20 @@ const SAPBasisPlanner = () => {
                                         <button onClick={() => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center hover:bg-red-100" title="Sub-Aktivität unwiderruflich löschen"><TrashIcon /></button>
                                       )}
                                       {subActivity.status === 'COMPLETED' && (
-                                        <button onClick={() => archiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm" title="Sub-Aktivität archivieren">📦</button>
+                                        <>
+                                          <button onClick={() => archiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm" title="Sub-Aktivität archivieren">📦</button>
+                                          {user?.role === 'teamlead' && (
+                                            <button onClick={() => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center hover:bg-red-100" title="Sub-Aktivität unwiderruflich löschen"><TrashIcon /></button>
+                                          )}
+                                        </>
                                       )}
-                                      {subActivity.status === 'ARCHIVED' && (
+                                      {subActivity.status === 'ARCHIVED' && user?.role === 'teamlead' && (
+                                        <>
+                                          <button onClick={() => unarchiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-blue-50 text-blue-600 rounded flex items-center justify-center hover:bg-blue-100 transition-colors" title="Sub-Aktivität wiederherstellen">🔄</button>
+                                          <button onClick={() => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id)} className="w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center hover:bg-red-100" title="Sub-Aktivität unwiderruflich löschen"><TrashIcon /></button>
+                                        </>
+                                      )}
+                                      {subActivity.status === 'ARCHIVED' && user?.role !== 'teamlead' && (
                                         <div className="w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale" title="Archiviert">📦</div>
                                       )}
                                     </>
@@ -4472,16 +4501,10 @@ const SAPBasisPlanner = () => {
       {
         activeTab === 'team' && (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">👥 Team-Auslastung</h2>
-
-            </div>
-
-            {/* Team Members Section */}
-            <div className="mb-8">
-              <h3 className="text-lg font-semibold text-gray-700 mb-4">Teammitglieder verwalten</h3>
-
-              {/* Add Team Member Form */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b pb-4 border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                <span>👥</span> Team-Auslastung
+              </h2>
               {/* Add Team Member Form - Only for Teamlead */}
               {canManageTeam && (
                 <form
@@ -4499,38 +4522,40 @@ const SAPBasisPlanner = () => {
                       }
                     }
                   }}
-                  className="flex gap-3 mb-4 items-end"
+                  className="flex items-center gap-3"
                 >
-                  <div>
-                    <label htmlFor="add-team-user" className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                    <select id="add-team-user" name="userId"
-                      required
-                      className="px-4 py-2 border border-gray-300 rounded-lg w-64 bg-white"
-                    >
-                      <option value="">- Bitte wählen -</option>
-                      {users && users.filter(u => u.role !== 'viewer').map(u => {
-                        const displayName = (u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username;
-                        return (
-                          <option key={u.id} value={u.id}>{displayName}</option>
-                        );
-                      })}
-                    </select>
-                  </div>
+                  <label htmlFor="add-team-user" className="hidden sm:block text-sm font-medium text-gray-700">Teammitglied:</label>
+                  <select id="add-team-user" name="userId"
+                    required
+                    className="px-3 py-1.5 border border-gray-300 rounded-md w-56 bg-white text-sm"
+                  >
+                    <option value="">- Bitte wählen -</option>
+                    {users && users.filter(u => u.role !== 'viewer').map(u => {
+                      const displayName = (u.first_name || u.last_name) ? `${u.first_name} ${u.last_name}`.trim() : u.username;
+                      return (
+                        <option key={u.id} value={u.id}>{displayName}</option>
+                      );
+                    })}
+                  </select>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                    className="px-4 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm whitespace-nowrap"
                   >
                     + Hinzufügen
                   </button>
                 </form>
               )}
+            </div>
 
+            {/* Team Members Section */}
+            <div className="mb-4 overflow-x-auto">
               {/* Team Members Table */}
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-gray-100">
                     <th className="text-left p-3 font-semibold">Teammitglied</th>
                     <th className="text-left p-3 font-semibold">Kürzel</th>
+                    {canManageTeam && <th className="text-center p-3 font-semibold">Std/Woche</th>}
                     {canManageTeam && <th className="text-center p-3 font-semibold">Arbeitstage</th>}
                     {canManageTeam && <th className="text-center p-3 font-semibold">Schulungen</th>}
                     {canManageTeam && <th className="text-center p-3 font-semibold">Verplant Q1</th>}
@@ -4615,6 +4640,26 @@ const SAPBasisPlanner = () => {
                       <tr key={member.id} className="border-b border-gray-200 hover:bg-gray-50">
                         <td className="p-3">{member.name}</td>
                         <td className="p-3 font-mono font-bold text-blue-600">{member.abbreviation}</td>
+                        {canManageTeam && (
+                          <td className="p-3 text-center">
+                            <input
+                              type="number"
+                              value={member.weekly_hours !== undefined ? member.weekly_hours : 40}
+                              step="4"
+                              min="4"
+                              max="40"
+                              title="Wochenstunden (z.B. 40 = Vollzeit, 20 = 50%, 8 = 1 Tag/Woche)"
+                              onChange={async (e) => {
+                                const val = Math.min(40, Math.max(4, parseFloat(e.target.value) || 40));
+                                try {
+                                  await api.updateTeamMember(member.id, { weekly_hours: val });
+                                  setTeamMembers(prev => prev.map(m => m.id === member.id ? { ...m, weekly_hours: val } : m));
+                                } catch (err) { alert(err.message); }
+                              }}
+                              className="w-16 text-center border border-gray-300 rounded px-1 py-0.5"
+                            />
+                          </td>
+                        )}
                         {canManageTeam && (
                           <td className="p-3 text-center">
                             <input name="autoField_17"
@@ -6541,64 +6586,89 @@ const SAPBasisPlanner = () => {
               <div className="flex justify-between items-center mb-6 border-b pb-4 flex-wrap gap-3">
                 <h2 className="text-2xl font-bold text-gray-800">📈 Auswertung — {getFilterLabel()}</h2>
                 <div className="flex items-center gap-2 flex-wrap auswertung-controls">
-                  {/* Time filter selectors */}
-                  <select
-                    value={filterType}
-                    onChange={(e) => {
-                      const t = e.target.value;
-                      const v = t === 'year' ? currentYear : t === 'quarter' ? '1' : '1';
-                      setAuswertungFilter({ type: t, value: v });
-                    }}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  >
-                    <option value="year">Ganzes Jahr</option>
-                    <option value="quarter">Quartal</option>
-                    <option value="month">Monat</option>
-                  </select>
+                  {/* Sub-tab toggle */}
+                  <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                    <button
+                      onClick={() => setAuswertungSubTab('stats')}
+                      className={`px-4 py-2 text-sm font-medium transition-colors ${
+                        auswertungSubTab === 'stats'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >📊 Statistik</button>
+                    <button
+                      onClick={() => setAuswertungSubTab('heatmap')}
+                      className={`px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${
+                        auswertungSubTab === 'heatmap'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >🌡️ Kapazität</button>
+                  </div>
 
-                  {filterType === 'quarter' && (
-                    <select
-                      value={filterValue}
-                      onChange={(e) => setAuswertungFilter({ ...auswertungFilter, value: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    >
-                      <option value="1">Q1 (Jan–Mär)</option>
-                      <option value="2">Q2 (Apr–Jun)</option>
-                      <option value="3">Q3 (Jul–Sep)</option>
-                      <option value="4">Q4 (Okt–Dez)</option>
-                    </select>
+                  {/* Time filter selectors — only for stats */}
+                  {auswertungSubTab === 'stats' && (
+                    <>
+                      <select
+                        value={filterType}
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          const v = t === 'year' ? currentYear : t === 'quarter' ? '1' : '1';
+                          setAuswertungFilter({ type: t, value: v });
+                        }}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      >
+                        <option value="year">Ganzes Jahr</option>
+                        <option value="quarter">Quartal</option>
+                        <option value="month">Monat</option>
+                      </select>
+
+                      {filterType === 'quarter' && (
+                        <select
+                          value={filterValue}
+                          onChange={(e) => setAuswertungFilter({ ...auswertungFilter, value: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        >
+                          <option value="1">Q1 (Jan–Mär)</option>
+                          <option value="2">Q2 (Apr–Jun)</option>
+                          <option value="3">Q3 (Jul–Sep)</option>
+                          <option value="4">Q4 (Okt–Dez)</option>
+                        </select>
+                      )}
+
+                      {filterType === 'month' && (
+                        <select
+                          value={filterValue}
+                          onChange={(e) => setAuswertungFilter({ ...auswertungFilter, value: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        >
+                          {MONTH_LABELS.map((label, i) => (
+                            <option key={i} value={String(i + 1)}>{label}</option>
+                          ))}
+                        </select>
+                      )}
+
+                      <button
+                        onClick={downloadCSV}
+                        className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium flex items-center gap-1.5"
+                        title="CSV exportieren"
+                      >
+                        <DownloadIcon /> CSV
+                      </button>
+                      <button
+                        onClick={handlePrint}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium no-print"
+                        title="Drucken"
+                      >
+                        🖨️ Drucken
+                      </button>
+                    </>
                   )}
-
-                  {filterType === 'month' && (
-                    <select
-                      value={filterValue}
-                      onChange={(e) => setAuswertungFilter({ ...auswertungFilter, value: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                    >
-                      {MONTH_LABELS.map((label, i) => (
-                        <option key={i} value={String(i + 1)}>{label}</option>
-                      ))}
-                    </select>
-                  )}
-
-                  <button
-                    onClick={downloadCSV}
-                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium flex items-center gap-1.5"
-                    title="CSV exportieren"
-                  >
-                    <DownloadIcon /> CSV
-                  </button>
-                  <button
-                    onClick={handlePrint}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium no-print"
-                    title="Drucken"
-                  >
-                    🖨️ Drucken
-                  </button>
                 </div>
               </div>
 
-              {allActivities.length === 0 ? (
+              {auswertungSubTab === 'stats' && (
+                allActivities.length === 0 ? (
                 /* ── Empty State ── */
                 <div className="text-center py-16">
                   <div className="text-6xl mb-4 opacity-30">📊</div>
@@ -6704,7 +6774,260 @@ const SAPBasisPlanner = () => {
                     </div>
                   </div>
                 </>
-              )}
+              ))}
+
+              {/* ── Kapazitäts-Heatmap Sub-Tab ── */}
+              {auswertungSubTab === 'heatmap' && (() => {
+                const MONTH_SHORT = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
+                // Count working days in a month (Mon-Fri, excluding holidays)
+                const workingDaysInMonth = (yr, monthIdx) => {
+                  const holidays = getGermanHolidays(yr, bundesland);
+                  let count = 0;
+                  const d = new Date(yr, monthIdx, 1);
+                  while (d.getMonth() === monthIdx) {
+                    const dow = d.getDay();
+                    const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (dow !== 0 && dow !== 6 && !holidays.has(iso)) count++;
+                    d.setDate(d.getDate() + 1);
+                  }
+                  return count;
+                };
+
+                // Count vacation days for a member in a given month
+                // urlaub has user_id; team_members have abbreviation synced from users
+                const vacationDaysInMonth = (member, yr, monthIdx) => {
+                  const memberAbbr = member.abbreviation;
+                  const memberName = member.name;
+                  let count = 0;
+                  urlaub.forEach(u => {
+                    // Match by abbreviation or username
+                    if (u.abbreviation !== memberAbbr && u.username !== memberName) return;
+                    const startD = new Date(Math.max(new Date(u.start_date), new Date(yr, monthIdx, 1)));
+                    const endD = new Date(Math.min(new Date(u.end_date), new Date(yr, monthIdx + 1, 0)));
+                    if (startD > endD) return;
+                    const cur = new Date(startD);
+                    while (cur <= endD) {
+                      const dow = cur.getDay();
+                      if (dow !== 0 && dow !== 6) count++;
+                      cur.setDate(cur.getDate() + 1);
+                    }
+                  });
+                  return count;
+                };
+
+                // Count training days for a member in a given month
+                const trainingDaysInMonth = (member, yr, monthIdx) => {
+                  const memberName = (member.name || '').toLowerCase();
+                  const memberAbbr = (member.abbreviation || '').toLowerCase();
+                  let total = 0;
+                  trainings.forEach(t => {
+                    if (!t.booked_date || t.booked_date <= 0) return;
+                    const parts = (t.participants || '').toLowerCase();
+                    if (!parts.includes(memberName) && !parts.includes(memberAbbr)) return;
+                    // Assign training days to months based on date1/date2/date3
+                    const dates = [t.date1, t.date2, t.date3].filter(Boolean);
+                    const perDateDays = dates.length > 0 ? (parseInt(t.days) || 0) / dates.length : 0;
+                    dates.forEach(dateStr => {
+                      if (!dateStr) return;
+                      const d = new Date(dateStr);
+                      if (d.getFullYear() === yr && d.getMonth() === monthIdx) {
+                        total += perDateDays;
+                      }
+                    });
+                    // Fallback: no dates set but days > 0 — ignore (no month info)
+                  });
+                  return Math.round(total * 10) / 10;
+                };
+
+                // Count planned activity days for a member in a given month
+                const plannedDaysInMonth = (member, yr, monthIdx) => {
+                  const firstDay = `${yr}-${String(monthIdx+1).padStart(2,'0')}-01`;
+                  const lastDay = new Date(yr, monthIdx+1, 0);
+                  const lastDayStr = `${yr}-${String(monthIdx+1).padStart(2,'0')}-${String(lastDay.getDate()).padStart(2,'0')}`;
+                  let total = 0;
+                  landscapes.forEach(l => {
+                    l.sids.forEach(sid => {
+                      (sid.activities || []).forEach(a => {
+                        const actMem = a.teamMemberId || a.team_member_id;
+                        if (actMem !== member.id) return;
+                        const sd = a.startDate || a.start_date;
+                        const ed = a.endDate || a.end_date || sd;
+                        if (!sd || ed < firstDay || sd > lastDayStr) return;
+                        // Clamp to month
+                        const actStart = sd < firstDay ? firstDay : sd;
+                        const actEnd = ed > lastDayStr ? lastDayStr : ed;
+                        // Count working days in the clamped range
+                        const holidays = getGermanHolidays(yr, bundesland);
+                        const cur = new Date(actStart);
+                        const end = new Date(actEnd);
+                        while (cur <= end) {
+                          const dow = cur.getDay();
+                          const iso = `${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+                          if (dow !== 0 && dow !== 6 && !holidays.has(iso)) total++;
+                          cur.setDate(cur.getDate() + 1);
+                        }
+                        // Handle sub-activities
+                        (a.subActivities || []).forEach(sub => {
+                          const subMem = sub.teamMemberId || sub.team_member_id;
+                          if (subMem !== member.id) return;
+                          const ssd = sub.startDate || sub.start_date;
+                          const sed = sub.endDate || sub.end_date || ssd;
+                          if (!ssd || sed < firstDay || ssd > lastDayStr) return;
+                          const sStart = ssd < firstDay ? firstDay : ssd;
+                          const sEnd = sed > lastDayStr ? lastDayStr : sed;
+                          const curS = new Date(sStart);
+                          const endS = new Date(sEnd);
+                          while (curS <= endS) {
+                            const dow = curS.getDay();
+                            const isoS = `${curS.getFullYear()}-${String(curS.getMonth()+1).padStart(2,'0')}-${String(curS.getDate()).padStart(2,'0')}`;
+                            if (dow !== 0 && dow !== 6 && !holidays.has(isoS)) total++;
+                            curS.setDate(curS.getDate() + 1);
+                          }
+                        });
+                      });
+                      // Series occurrences
+                      (sid.series || []).forEach(series => {
+                        (series.occurrences || []).forEach(occ => {
+                          const occMem = occ.teamMemberId || occ.team_member_id || series.teamMemberId || series.team_member_id;
+                          if (parseInt(occMem) !== member.id) return;
+                          if (!occ.date || occ.date < firstDay || occ.date > lastDayStr) return;
+                          let dur = 0.5;
+                          if (occ.start_time && occ.end_time) {
+                            const [sh, sm] = occ.start_time.split(':').map(Number);
+                            const [eh, em] = occ.end_time.split(':').map(Number);
+                            dur = Math.max(0.125, ((eh * 60 + em) - (sh * 60 + sm)) / 480);
+                          }
+                          total += dur;
+                        });
+                      });
+                    });
+                  });
+                  return Math.round(total * 10) / 10;
+                };
+
+                const getCellColor = (available, gross) => {
+                  if (gross <= 0) return { bg: darkMode ? '#1f2937' : '#f3f4f6', text: darkMode ? '#9ca3af' : '#9ca3af' };
+                  const pct = available / gross;
+                  if (pct > 0.5)  return { bg: darkMode ? '#064e3b' : '#d1fae5', text: darkMode ? '#6ee7b7' : '#065f46' };
+                  if (pct > 0.25) return { bg: darkMode ? '#78350f' : '#fef3c7', text: darkMode ? '#fcd34d' : '#92400e' };
+                  if (pct > 0)    return { bg: darkMode ? '#7c2d12' : '#fed7aa', text: darkMode ? '#fdba74' : '#9a3412' };
+                  return { bg: darkMode ? '#7f1d1d' : '#fee2e2', text: darkMode ? '#fca5a5' : '#991b1b' };
+                };
+
+                if (teamMembers.length === 0) {
+                  return (
+                    <div className="text-center py-16">
+                      <div className="text-6xl mb-4 opacity-30">👥</div>
+                      <p className="text-gray-500 text-lg">Keine Teammitglieder vorhanden</p>
+                      <p className="text-gray-400 text-sm mt-1">Fügen Sie Teammitglieder im Tab "Team" hinzu.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div>
+                    {/* Legend */}
+                    <div className="flex items-center gap-4 mb-4 text-xs text-gray-600 flex-wrap">
+                      <span className="font-semibold">Legende (verfügbare Kapazität):</span>
+                      <span className="px-2 py-1 rounded" style={{ background: darkMode ? '#064e3b' : '#d1fae5', color: darkMode ? '#6ee7b7' : '#065f46' }}>● &gt;50% frei</span>
+                      <span className="px-2 py-1 rounded" style={{ background: darkMode ? '#78350f' : '#fef3c7', color: darkMode ? '#fcd34d' : '#92400e' }}>● 25–50% frei</span>
+                      <span className="px-2 py-1 rounded" style={{ background: darkMode ? '#7c2d12' : '#fed7aa', color: darkMode ? '#fdba74' : '#9a3412' }}>● 1–25% frei</span>
+                      <span className="px-2 py-1 rounded" style={{ background: darkMode ? '#7f1d1d' : '#fee2e2', color: darkMode ? '#fca5a5' : '#991b1b' }}>● ≤0% (überlastet)</span>
+                      <span className="ml-2 text-gray-500">Zahlen = verfügbare Tage | geplant + frei = Nettobasis</span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="text-left px-3 py-2 border border-gray-300 font-semibold min-w-32">Mitarbeiter</th>
+                            <th className="text-center px-2 py-2 border border-gray-300 text-xs">Std/Wo</th>
+                            {MONTH_SHORT.map((m, i) => {
+                              const gross = workingDaysInMonth(year, i);
+                              return (
+                                <th key={i} className="text-center px-2 py-2 border border-gray-300 font-semibold" style={{ minWidth: '70px' }}>
+                                  {m}<br/><span className="text-xs font-normal text-gray-500">{gross}AT</span>
+                                </th>
+                              );
+                            })}
+                            <th className="text-center px-3 py-2 border border-gray-300 font-semibold">Jahres-∑</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {teamMembers.map((member, idx) => {
+                            const weeklyHours = member.weekly_hours !== undefined ? parseFloat(member.weekly_hours) : 40;
+                            const partTimeFactor = weeklyHours / 40;
+                            let yearFree = 0;
+                            let yearGross = 0;
+                            return (
+                              <tr key={member.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className="px-3 py-2 border border-gray-300 font-medium">
+                                  {member.name}
+                                  {partTimeFactor < 1 && (
+                                    <span className="ml-1 text-xs text-blue-600 font-normal">({weeklyHours}h)</span>
+                                  )}
+                                </td>
+                                <td className="text-center px-2 py-2 border border-gray-300 text-xs text-gray-600">{weeklyHours}h</td>
+                                {MONTH_SHORT.map((m, monthIdx) => {
+                                  const rawGross = workingDaysInMonth(year, monthIdx);
+                                  const gross = Math.round(rawGross * partTimeFactor * 10) / 10;
+                                  const vacation = Math.min(vacationDaysInMonth(member, year, monthIdx) * partTimeFactor, gross);
+                                  const training = trainingDaysInMonth(member, year, monthIdx);
+                                  const planned = plannedDaysInMonth(member, year, monthIdx);
+                                  const available = Math.round((gross - vacation - training - planned) * 10) / 10;
+                                  yearFree += available;
+                                  yearGross += gross;
+                                  const { bg, text } = getCellColor(available, gross);
+                                  const tooltip = `${member.name} – ${m}\nBrutto: ${gross}d | Urlaub: ${Math.round(vacation*10)/10}d | Schulung: ${training}d | Geplant: ${planned}d | Frei: ${available}d`;
+                                  return (
+                                    <td
+                                      key={monthIdx}
+                                      title={tooltip}
+                                      className="text-center px-2 py-2 border border-gray-300 cursor-default"
+                                      style={{ backgroundColor: bg, color: text }}
+                                    >
+                                      <div className="font-bold text-sm">{available > 0 ? '+' + available : available}</div>
+                                      <div className="text-xs opacity-70">{Math.round(planned*10)/10}g</div>
+                                    </td>
+                                  );
+                                })}
+                                {/* Jahressumme after the loop — but React doesn't allow us to read yearFree here inline.
+                                    We compute it again just for the total cell. */}
+                                {(() => {
+                                  let totalFree = 0;
+                                  let totalGross = 0;
+                                  for (let mi = 0; mi < 12; mi++) {
+                                    const rawG = workingDaysInMonth(year, mi);
+                                    const g = Math.round(rawG * partTimeFactor * 10) / 10;
+                                    const v = Math.min(vacationDaysInMonth(member, year, mi) * partTimeFactor, g);
+                                    const tr2 = trainingDaysInMonth(member, year, mi);
+                                    const pl = plannedDaysInMonth(member, year, mi);
+                                    totalFree += g - v - tr2 - pl;
+                                    totalGross += g;
+                                  }
+                                  totalFree = Math.round(totalFree * 10) / 10;
+                                  const { bg, text } = getCellColor(totalFree, totalGross);
+                                  return (
+                                    <td className="text-center px-3 py-2 border border-gray-300 font-bold" style={{ backgroundColor: bg, color: text }}>
+                                      {totalFree > 0 ? '+' + totalFree : totalFree}d
+                                    </td>
+                                  );
+                                })()}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <p className="text-xs text-gray-400 mt-3">
+                      AT = Arbeitstage (ohne Wochenenden &amp; Feiertage {bundesland}). Zellen: oben = freie Tage, unten = geplante Tage.
+                      Urlaubsabgleich erfolgt über Kürzel. Teilzeit skaliert die Brutto-Kapazität proportional zu Std/Woche.
+                    </p>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()
@@ -6820,6 +7143,7 @@ const SAPBasisPlanner = () => {
           activityTypes={activityTypes}
           teamMembers={teamMembers}
           canEdit={canEdit}
+          user={user}
           year={year}
           api={api}
           onClose={async () => {

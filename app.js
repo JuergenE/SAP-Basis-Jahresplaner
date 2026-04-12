@@ -558,6 +558,23 @@ class ApiClient {
       method: 'DELETE'
     });
   }
+
+  // Unarchive (teamlead only)
+  async unarchiveActivity(id) {
+    return this.request(`/api/activities/${id}/unarchive`, {
+      method: 'PUT'
+    });
+  }
+  async unarchiveSubActivity(id) {
+    return this.request(`/api/sub-activities/${id}/unarchive`, {
+      method: 'PUT'
+    });
+  }
+  async unarchiveOccurrence(seriesId, occId) {
+    return this.request(`/api/series/${seriesId}/occurrences/${occId}/unarchive`, {
+      method: 'PUT'
+    });
+  }
 }
 const api = new ApiClient();
 const APP_VERSION_FALLBACK = '0.2.2';
@@ -1185,6 +1202,7 @@ const SeriesPopupEditor = ({
   activityTypes,
   teamMembers,
   canEdit,
+  user,
   year,
   api,
   onClose
@@ -1370,6 +1388,18 @@ const SeriesPopupEditor = ({
       setLocalOccs(prev => prev.map(o => o.id === occId ? {
         ...o,
         status: 'ARCHIVED'
+      } : o));
+    } catch (e) {
+      alert('Fehler: ' + e.message);
+    }
+  };
+  const handleUnarchiveOcc = async occId => {
+    try {
+      if (!(await showConfirm('Termin wirklich wiederherstellen? Er wird auf "Abgeschlossen" zurückgesetzt.'))) return;
+      await api.unarchiveOccurrence(series.id, occId);
+      setLocalOccs(prev => prev.map(o => o.id === occId ? {
+        ...o,
+        status: 'COMPLETED'
       } : o));
     } catch (e) {
       alert('Fehler: ' + e.message);
@@ -1574,7 +1604,15 @@ const SeriesPopupEditor = ({
     onClick: () => handleArchiveOcc(occ.id),
     className: "w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm",
     title: "Termin archivieren"
-  }, "\uD83D\uDCE6"), occ.status === 'ARCHIVED' && /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDCE6"), occ.status === 'ARCHIVED' && user?.role === 'teamlead' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    onClick: () => handleUnarchiveOcc(occ.id),
+    className: "w-6 h-6 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded flex items-center justify-center hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors",
+    title: "Termin wiederherstellen"
+  }, "\uD83D\uDD04"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => handleDeleteOcc(occ.id),
+    className: "w-6 h-6 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded flex items-center justify-center hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors",
+    title: "Termin unwiderruflich l\xF6schen"
+  }, /*#__PURE__*/React.createElement(TrashIcon, null))), occ.status === 'ARCHIVED' && user?.role !== 'teamlead' && /*#__PURE__*/React.createElement("div", {
     className: "w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale",
     title: "Archiviert"
   }, "\uD83D\uDCE6")))))))) : /*#__PURE__*/React.createElement("div", {
@@ -1694,6 +1732,7 @@ const SAPBasisPlanner = () => {
     type: 'year',
     value: ''
   });
+  const [auswertungSubTab, setAuswertungSubTab] = useState('stats'); // 'stats' | 'heatmap'
   // Auswertung chart refs (must be at top level to satisfy Rules of Hooks)
   const pieCanvasRef = React.useRef(null);
   const barCanvasRef = React.useRef(null);
@@ -1730,6 +1769,8 @@ const SAPBasisPlanner = () => {
   const [urlaubModalUserId, setUrlaubModalUserId] = useState('');
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [showToolsDropdown, setShowToolsDropdown] = useState(false);
 
   // --- Drag-to-Scroll State & Handlers (uses scrollContainerRef) ---
   const scrollContainerRef = useRef(null);
@@ -2671,6 +2712,30 @@ const SAPBasisPlanner = () => {
       }
     });
   };
+  const unarchiveActivity = async (landscapeId, sidId, activityId) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: 'Aktivität wiederherstellen',
+      message: 'Möchten Sie diese Aktivität wirklich wiederherstellen? Der Status wird auf "Abgeschlossen" zurückgesetzt.',
+      onConfirm: async () => {
+        try {
+          await api.unarchiveActivity(activityId);
+          setLandscapes(landscapes.map(l => l.id === landscapeId ? {
+            ...l,
+            sids: l.sids.map(s => s.id === sidId ? {
+              ...s,
+              activities: s.activities.map(a => a.id === activityId ? {
+                ...a,
+                status: 'COMPLETED'
+              } : a)
+            } : s)
+          } : l));
+        } catch (error) {
+          alert('Fehler: ' + error.message);
+        }
+      }
+    });
+  };
 
   // Convert activity to series
   const convertToSeries = async (landscapeId, sidId, activityId) => {
@@ -2850,6 +2915,33 @@ const SAPBasisPlanner = () => {
     } catch (error) {
       alert('Fehler: ' + error.message);
     }
+  };
+  const unarchiveSubActivity = async (landscapeId, sidId, activityId, subActivityId) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: 'Sub-Aktivität wiederherstellen',
+      message: 'Sub-Aktivität wirklich wiederherstellen? Der Status wird auf "Abgeschlossen" zurückgesetzt.',
+      onConfirm: async () => {
+        try {
+          await api.unarchiveSubActivity(subActivityId);
+          setLandscapes(landscapes.map(l => l.id === landscapeId ? {
+            ...l,
+            sids: l.sids.map(s => s.id === sidId ? {
+              ...s,
+              activities: s.activities.map(a => a.id === activityId ? {
+                ...a,
+                subActivities: (a.subActivities || []).map(sub => sub.id === subActivityId ? {
+                  ...sub,
+                  status: 'COMPLETED'
+                } : sub)
+              } : a)
+            } : s)
+          } : l));
+        } catch (error) {
+          alert('Fehler: ' + error.message);
+        }
+      }
+    });
   };
   const updateSubActivity = async (landscapeId, sidId, activityId, subActivityId, field, value) => {
     const landscape = landscapes.find(l => l.id === landscapeId);
@@ -3419,6 +3511,87 @@ const SAPBasisPlanner = () => {
     }, /*#__PURE__*/React.createElement("h2", {
       className: "text-xl font-bold mb-4"
     }, "Gantt-Chart ", year), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col xl:flex-row xl:items-end justify-between gap-4 mb-4 border-b border-gray-200 pb-4"
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+      className: "mb-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3 mb-2"
+    }, /*#__PURE__*/React.createElement("h3", {
+      className: "font-semibold"
+    }, "Aktivit\xE4tstypen:"), canEdit && /*#__PURE__*/React.createElement("button", {
+      onClick: addActivityType,
+      className: "text-sm px-2 py-1 border border-gray-300 rounded hover:bg-gray-100"
+    }, "+ Aktivit\xE4t hinzuf\xFCgen")), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-wrap gap-3"
+    }, activityTypes.map(type => /*#__PURE__*/React.createElement("div", {
+      key: type.id,
+      className: "flex items-center gap-2 group"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "w-4 h-4 rounded",
+      style: {
+        backgroundColor: type.color
+      }
+    }), canEdit && editingTypeId === type.id ? /*#__PURE__*/React.createElement("input", {
+      name: "autoField_2",
+      type: "text",
+      value: type.label,
+      onChange: e => renameActivityType(type.id, e.target.value),
+      onBlur: () => setEditingTypeId(null),
+      onKeyDown: e => e.key === 'Enter' && setEditingTypeId(null),
+      className: "text-sm px-1 border border-blue-400 rounded w-32",
+      autoFocus: true,
+      maxLength: "24"
+    }) : /*#__PURE__*/React.createElement("span", {
+      className: `text-sm ${canEdit ? 'cursor-pointer hover:text-blue-600' : ''}`,
+      onClick: () => canEdit && setEditingTypeId(type.id),
+      title: canEdit ? 'Klicken zum Umbenennen' : ''
+    }, type.label), canEdit && /*#__PURE__*/React.createElement("button", {
+      onClick: () => deleteActivityType(type.id),
+      className: "opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 text-xs",
+      title: "L\xF6schen"
+    }, "\xD7")))), /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-200"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 mr-4 font-bold text-gray-700"
+    }, "Zeichenschl\xFCssel:"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "w-4 h-4 weekend-pattern border border-gray-300"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "text-sm"
+    }, "Wochenende")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "w-4 h-4 holiday-pattern border border-gray-300"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "text-sm"
+    }, "Feiertag")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "w-4 h-4 today-marker border border-gray-300"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "text-sm"
+    }, "Heute (", formatDateDE(today), ")")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "w-4 h-4 maintenance-pattern border border-purple-400"
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "text-sm"
+    }, "Wartungssonntag")), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2 ml-4"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "relative h-6 w-24 flex items-center"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "absolute inset-x-0 top-1 bottom-1 border border-pink-500 rounded z-0"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "absolute left-0 top-1 bottom-1 w-3 bg-pink-500 rounded-l z-10 text-[8px] text-white flex items-center justify-center"
+    }, "S.."), /*#__PURE__*/React.createElement("div", {
+      className: "absolute left-3 right-8 top-1 bottom-1 weekend-pattern opacity-50 z-0"
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "absolute right-0 top-1 bottom-1 w-8 bg-pink-500 rounded-r z-10"
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "text-sm"
+    }, "Zusammenh\xE4ngende Aktivit\xE4t")))))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2 mb-4 flex-wrap w-1/2"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => setViewOffset(Math.max(0, viewOffset - 7)),
@@ -3452,13 +3625,13 @@ const SAPBasisPlanner = () => {
       title: isTodayInRange ? "Heute anzeigen" : "Heute liegt nicht im gewählten Zeitraum"
     }, "Heute")), /*#__PURE__*/React.createElement("div", {
       ref: scrollContainerRef,
-      className: `min-w-max overflow-auto ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`,
+      className: `min-w-max overflow-auto max-h-[65vh] snap-y snap-mandatory scroll-smooth pb-12 ${isDragging ? 'cursor-grabbing select-none' : 'cursor-grab'}`,
       onMouseDown: handleMouseDown,
       onMouseUp: handleMouseUp,
       onMouseLeave: handleMouseLeave,
       onMouseMove: handleMouseMove
     }, /*#__PURE__*/React.createElement("div", {
-      className: "flex border-b-2 border-gray-300 mb-2"
+      className: "flex border-b-2 border-gray-300 mb-2 sticky top-0 z-30 bg-white shadow-sm"
     }, /*#__PURE__*/React.createElement("div", {
       className: "gantt-row-label min-w-48 font-semibold p-2 bg-gray-50"
     }, "Systemlandschaft / SID"), /*#__PURE__*/React.createElement("div", {
@@ -3571,7 +3744,7 @@ const SAPBasisPlanner = () => {
       if (visibleSids.length === 0) return null;
       return /*#__PURE__*/React.createElement("div", {
         key: landscape.id,
-        className: "mb-4"
+        className: "mb-4 snap-start scroll-mt-20"
       }, /*#__PURE__*/React.createElement("div", {
         className: "font-semibold text-lg mb-1 text-blue-700 px-2"
       }, landscape.name), visibleSids.map(sid => {
@@ -3649,7 +3822,7 @@ const SAPBasisPlanner = () => {
         };
         return /*#__PURE__*/React.createElement("div", {
           key: sid.id,
-          className: "flex items-stretch"
+          className: "flex items-stretch snap-start scroll-mt-20"
         }, /*#__PURE__*/React.createElement("div", {
           className: `gantt-row-label min-w-48 pl-4 text-sm flex items-center gap-1 py-1 border-b ${viewMode === 'year' ? 'border-gray-400' : 'border-gray-100'}`
         }, /*#__PURE__*/React.createElement("span", {
@@ -3914,117 +4087,93 @@ const SAPBasisPlanner = () => {
   }, "\uD83D\uDC64"), u.abbreviation))), /*#__PURE__*/React.createElement("div", {
     className: "max-w-7xl mx-auto"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-lg shadow-lg p-4 md:p-6 mb-6"
+    className: "bg-white rounded-lg shadow-md p-3 mb-4"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4"
+    className: "flex flex-wrap items-center justify-between gap-3 mb-3"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-3"
+    className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement(CalendarIcon, null), /*#__PURE__*/React.createElement("h1", {
-    className: "text-2xl md:text-3xl font-bold text-gray-800"
+    className: "text-xl md:text-2xl font-bold text-gray-800"
   }, "SAP Basis Jahresplaner")), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 flex-wrap header-controls items-center"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm text-gray-600"
-  }, user.username, " (", user.role === 'teamlead' ? 'Teamleiter' : user.role === 'admin' ? 'Administrator' : user.role === 'viewer' ? 'Viewer' : 'Benutzer', ")"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowPasswordDialog(true),
-    className: "px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded"
-  }, "\uD83D\uDD11 Passwort"), canEdit && /*#__PURE__*/React.createElement("button", {
-    onClick: openUserDialog,
-    className: "px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded"
-  }, "\uD83D\uDC65 Benutzer"), /*#__PURE__*/React.createElement("button", {
-    onClick: handleLogout,
-    className: "px-3 py-1 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded"
-  }, "Abmelden"), canEdit && /*#__PURE__*/React.createElement("button", {
-    onClick: saveSettings,
-    className: "flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-  }, /*#__PURE__*/React.createElement(SaveIcon, null), " Einstellungen speichern"), /*#__PURE__*/React.createElement("button", {
+    className: "flex gap-2 items-center flex-wrap"
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: handleRefresh,
-    className: "flex items-center gap-2 px-4 py-2 bg-blue-100 text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-200 text-sm",
+    className: "px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md hover:bg-blue-100 text-sm",
     title: "Daten vom Server aktualisieren"
-  }, "\uD83D\uDD04 Aktualisieren"), /*#__PURE__*/React.createElement("div", {
-    className: "relative",
-    style: {
-      position: 'relative'
-    }
+  }, "\uD83D\uDD04 Aktualisieren"), canEdit && /*#__PURE__*/React.createElement("button", {
+    onClick: saveSettings,
+    className: "px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm flex items-center gap-1"
+  }, /*#__PURE__*/React.createElement(SaveIcon, null), " Speichern"), /*#__PURE__*/React.createElement("div", {
+    className: "relative"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setShowToolsDropdown(!showToolsDropdown);
+      setShowProfileDropdown(false);
+      setShowCsvDropdown(false);
+      setShowDataDropdown(false);
+    },
+    className: "px-3 py-1.5 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 text-sm flex items-center gap-1"
+  }, "\uD83D\uDEE0\uFE0F Werkzeuge \u25BE"), showToolsDropdown && /*#__PURE__*/React.createElement("div", {
+    className: "absolute top-full right-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setShowCsvDropdown(!showCsvDropdown);
       setShowDataDropdown(false);
     },
-    className: "flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"
-  }, /*#__PURE__*/React.createElement(DownloadIcon, null), " CSV Export \u25BE"), showCsvDropdown && /*#__PURE__*/React.createElement("div", {
-    className: "csv-dropdown-panel absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-48",
-    style: {
-      zIndex: 9999
-    }
+    className: "w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCCA CSV Export"), " ", /*#__PURE__*/React.createElement("span", null, showCsvDropdown ? '▴' : '▾')), showCsvDropdown && /*#__PURE__*/React.createElement("div", {
+    className: "bg-gray-50 border-y border-gray-100"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       exportCSV();
       setShowCsvDropdown(false);
+      setShowToolsDropdown(false);
     },
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-t-lg flex items-center gap-2"
-  }, "\uD83D\uDCCA Gantt-Ansicht"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
+  }, "Gantt-Ansicht"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       exportSkillsCSV();
       setShowCsvDropdown(false);
+      setShowToolsDropdown(false);
     },
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 border-t border-gray-100"
-  }, "\uD83C\uDF93 Skills & Schulungen"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
+  }, "Skills & Schulungen"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       exportBereitschaftCSV();
       setShowCsvDropdown(false);
+      setShowToolsDropdown(false);
     },
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 border-t border-gray-100"
-  }, "\uD83D\uDD14 Bereitschaft"), (user?.role === 'admin' || user?.role === 'teamlead') && /*#__PURE__*/React.createElement("button", {
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
+  }, "Bereitschaft"), (user?.role === 'admin' || user?.role === 'teamlead') && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       exportTeamCSV();
       setShowCsvDropdown(false);
+      setShowToolsDropdown(false);
     },
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
-  }, "\uD83D\uDC65 Team-Auslastung")), showCsvDropdown && /*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0",
-    style: {
-      zIndex: 9998
-    },
-    onClick: () => setShowCsvDropdown(false)
-  })), (user?.role === 'teamlead' || user?.role === 'admin') && /*#__PURE__*/React.createElement("div", {
-    className: "relative",
-    style: {
-      position: 'relative'
-    }
-  }, /*#__PURE__*/React.createElement("button", {
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
+  }, "Team-Auslastung")), (user?.role === 'teamlead' || user?.role === 'admin') && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setShowDataDropdown(!showDataDropdown);
       setShowCsvDropdown(false);
     },
-    className: "flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
-  }, "\uD83D\uDD12 Datensicherung \u25BE"), showDataDropdown && /*#__PURE__*/React.createElement("div", {
-    className: "data-dropdown-panel absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl z-50 min-w-52",
-    style: {
-      zIndex: 9999
-    }
+    className: "w-full text-left px-4 py-2 text-sm hover:bg-gray-50 flex items-center justify-between border-t border-gray-100"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDD12 Datensicherung"), " ", /*#__PURE__*/React.createElement("span", null, showDataDropdown ? '▴' : '▾')), showDataDropdown && /*#__PURE__*/React.createElement("div", {
+    className: "bg-gray-50 border-y border-gray-100"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       exportJSON();
       setShowDataDropdown(false);
+      setShowToolsDropdown(false);
     },
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-t-lg flex items-center gap-2"
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
   }, "\uD83D\uDCE4 JSON Export"), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => document.getElementById('jsonImportInput').click(),
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 border-t border-gray-100"
-  }, "\uD83D\uDCE5 JSON Import"), /*#__PURE__*/React.createElement("input", {
-    id: "jsonImportInput",
-    type: "file",
-    accept: ".json,application/json",
-    onChange: e => {
-      importJSON(e);
-      setShowDataDropdown(false);
-    },
-    className: "hidden"
-  }), user?.role === 'teamlead' && /*#__PURE__*/React.createElement("button", {
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
+  }, "\uD83D\uDCE5 JSON Import"), user?.role === 'teamlead' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: async () => {
       setShowDataDropdown(false);
+      setShowToolsDropdown(false);
       try {
         const backup = await api.exportBackup();
         const blob = new Blob([JSON.stringify(backup, null, 2)], {
@@ -4042,17 +4191,40 @@ const SAPBasisPlanner = () => {
         alert('❌ Fehler beim Backup: ' + error.message);
       }
     },
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 border-t border-gray-100"
-  }, "\uD83D\uDCE5 Backup"), user?.role === 'teamlead' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
+  }, "\uD83D\uDCE5 Backup DB"), /*#__PURE__*/React.createElement("button", {
     type: "button",
     onClick: () => document.getElementById('restoreBackupInput').click(),
-    className: "w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 rounded-b-lg flex items-center gap-2 border-t border-gray-100"
-  }, "\uD83D\uDCE4 Restore"), /*#__PURE__*/React.createElement("input", {
+    className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
+  }, "\uD83D\uDCE4 Restore DB")))), canEdit && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      openLogsDialog();
+      setShowToolsDropdown(false);
+    },
+    className: "w-full text-left px-4 py-2 text-sm hover:bg-gray-50 border-t border-gray-100"
+  }, "\uD83D\uDCCB Logfiles")), showToolsDropdown && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0",
+    style: {
+      zIndex: 40
+    },
+    onClick: () => setShowToolsDropdown(false)
+  }), /*#__PURE__*/React.createElement("input", {
+    id: "jsonImportInput",
+    type: "file",
+    accept: ".json,application/json",
+    onChange: e => {
+      importJSON(e);
+      setShowDataDropdown(false);
+      setShowToolsDropdown(false);
+    },
+    className: "hidden"
+  }), /*#__PURE__*/React.createElement("input", {
     id: "restoreBackupInput",
     type: "file",
     accept: ".json,application/json",
     onChange: async event => {
       setShowDataDropdown(false);
+      setShowToolsDropdown(false);
       const file = event.target.files?.[0];
       if (!file) return;
       try {
@@ -4062,10 +4234,9 @@ const SAPBasisPlanner = () => {
           alert('❌ Ungültige Backup-Datei: Version fehlt');
           return;
         }
-        const confirmed = confirm(`Backup importieren?\n\n` + `Backup-Version: ${backup.version}\n` + `Export-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n\n` + `⚠️ Alle aktuellen Daten werden überschrieben!`);
-        if (confirmed) {
+        if (confirm(`Backup importieren?\n\nBackup-Version: ${backup.version}\nExport-Datum: ${backup.exportDate ? new Date(backup.exportDate).toLocaleString('de-DE') : 'unbekannt'}\n\n⚠️ Alle aktuellen Daten werden überschrieben!`)) {
           const result = await api.importBackup(backup);
-          alert(`✅ Backup erfolgreich importiert!\n\n` + `Importierte Daten:\n` + Object.entries(result.imported || {}).map(([k, v]) => `  ${k}: ${v}`).join('\n'));
+          alert(`✅ Backup erfolgreich importiert!`);
           window.location.reload();
         }
       } catch (error) {
@@ -4074,25 +4245,51 @@ const SAPBasisPlanner = () => {
       event.target.value = '';
     },
     className: "hidden"
-  }))), showDataDropdown && /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "relative"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setShowProfileDropdown(!showProfileDropdown);
+      setShowToolsDropdown(false);
+    },
+    className: "px-3 py-1.5 bg-gray-100 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200 text-sm flex items-center gap-1"
+  }, "\uD83D\uDC64 ", user.username, " \u25BE"), showProfileDropdown && /*#__PURE__*/React.createElement("div", {
+    className: "absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-50 py-1"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "px-4 py-2 border-b border-gray-100 text-xs text-gray-500"
+  }, "Rolle: ", user.role === 'teamlead' ? 'Teamleiter' : user.role === 'admin' ? 'Administrator' : user.role === 'viewer' ? 'Viewer' : 'Benutzer'), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setShowPasswordDialog(true);
+      setShowProfileDropdown(false);
+    },
+    className: "w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+  }, "\uD83D\uDD11 Passwort"), canEdit && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      openUserDialog();
+      setShowProfileDropdown(false);
+    },
+    className: "w-full text-left px-4 py-2 text-sm hover:bg-gray-50"
+  }, "\uD83D\uDC65 Benutzer"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleLogout,
+    className: "w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100"
+  }, "Abmelden")), showProfileDropdown && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0",
     style: {
-      zIndex: 9998
+      zIndex: 40
     },
-    onClick: () => setShowDataDropdown(false)
-  })), canEdit && /*#__PURE__*/React.createElement("button", {
-    onClick: openLogsDialog,
-    className: "flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
-  }, "\uD83D\uDCCB Logfiles"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowProfileDropdown(false)
+  })), /*#__PURE__*/React.createElement("button", {
     onClick: toggleDarkMode,
-    className: "dark-toggle",
+    className: "dark-toggle ml-1",
     title: darkMode ? 'Heller Modus' : 'Dunkler Modus (Dracula)',
     "aria-label": darkMode ? 'Switch to light mode' : 'Switch to dark mode'
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-4 items-end flex-wrap"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "flex flex-wrap items-center gap-3 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("label", {
     htmlFor: "filter-year",
-    className: "block text-sm font-medium text-gray-700 mb-1"
+    className: "text-sm font-medium text-gray-700"
   }, "Jahr"), /*#__PURE__*/React.createElement("input", {
     name: "filterYear",
     id: "filter-year",
@@ -4104,27 +4301,35 @@ const SAPBasisPlanner = () => {
       const val = parseInt(e.target.value);
       if (val >= 2026 && val <= 2036) {
         setYear(val);
-        setViewOffset(60); // Reset to Jan 1 of the new year
+        setViewOffset(60);
       }
     },
     disabled: !canEdit,
-    className: `px-4 py-2 border border-gray-300 rounded-lg w-24 ${!canEdit ? 'bg-gray-100' : ''}`
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: `px-2 py-1 border border-gray-300 rounded-md w-20 text-sm ${!canEdit ? 'bg-gray-100' : ''}`
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "w-px h-6 bg-gray-300 mx-1 hidden sm:block"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("label", {
     htmlFor: "filter-bundesland",
-    className: "block text-sm font-medium text-gray-700 mb-1"
+    className: "text-sm font-medium text-gray-700"
   }, "Bundesland"), /*#__PURE__*/React.createElement("select", {
     name: "filterBundesland",
     id: "filter-bundesland",
     value: bundesland,
     onChange: e => setBundesland(e.target.value),
     disabled: !canEdit,
-    className: `px-4 py-2 border border-gray-300 rounded-lg ${!canEdit ? 'bg-gray-100 appearance-none' : ''}`
+    className: `px-2 py-1 border border-gray-300 rounded-md text-sm max-w-[150px] truncate ${!canEdit ? 'bg-gray-100 appearance-none' : ''}`
   }, bundeslaender.map(bl => /*#__PURE__*/React.createElement("option", {
     key: bl.id,
     value: bl.id
-  }, bl.name)))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }, bl.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "w-px h-6 bg-gray-300 mx-1 hidden sm:block"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("label", {
     htmlFor: "filter-ansicht",
-    className: "block text-sm font-medium text-gray-700 mb-1"
+    className: "text-sm font-medium text-gray-700"
   }, "Ansicht"), /*#__PURE__*/React.createElement("select", {
     name: "filterViewMode",
     id: "filter-ansicht",
@@ -4133,17 +4338,16 @@ const SAPBasisPlanner = () => {
       setViewMode(e.target.value);
       setViewOffset(0);
     },
-    className: "px-4 py-2 border border-gray-300 rounded-lg"
+    className: "px-2 py-1 border border-gray-300 rounded-md text-sm"
   }, /*#__PURE__*/React.createElement("option", {
     value: "year"
   }, "Jahresansicht"), /*#__PURE__*/React.createElement("option", {
     value: "quarter"
   }, "Quartalsansicht"), /*#__PURE__*/React.createElement("option", {
     value: "week"
-  }, "Kalenderwoche"))), (viewMode === 'quarter' || viewMode === 'week') && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-    htmlFor: "filter-quartal",
-    className: "block text-sm font-medium text-gray-700 mb-1"
-  }, "Quartal"), /*#__PURE__*/React.createElement("select", {
+  }, "Kalenderwoche"))), (viewMode === 'quarter' || viewMode === 'week') && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("select", {
     name: "filterQuarter",
     id: "filter-quartal",
     value: selectedQuarter,
@@ -4151,43 +4355,37 @@ const SAPBasisPlanner = () => {
       setSelectedQuarter(parseInt(e.target.value));
       setViewOffset(0);
     },
-    className: "px-4 py-2 border border-gray-300 rounded-lg"
+    className: "px-2 py-1 border border-gray-300 rounded-md text-sm"
   }, /*#__PURE__*/React.createElement("option", {
     value: 1
-  }, "Q1 (Jan-M\xE4r)"), /*#__PURE__*/React.createElement("option", {
+  }, "Q1"), /*#__PURE__*/React.createElement("option", {
     value: 2
-  }, "Q2 (Apr-Jun)"), /*#__PURE__*/React.createElement("option", {
+  }, "Q2"), /*#__PURE__*/React.createElement("option", {
     value: 3
-  }, "Q3 (Jul-Sep)"), /*#__PURE__*/React.createElement("option", {
+  }, "Q3"), /*#__PURE__*/React.createElement("option", {
     value: 4
-  }, "Q4 (Okt-Dez)"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+  }, "Q4"))), /*#__PURE__*/React.createElement("div", {
+    className: "w-px h-6 bg-gray-300 mx-1 hidden sm:block"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("label", {
     htmlFor: "filter-wartungssonntag",
-    className: "block text-sm font-medium text-gray-700 mb-1"
-  }, "Wartungssonntag"), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2"
-  }, /*#__PURE__*/React.createElement("select", {
+    className: "text-sm font-medium text-gray-700"
+  }, "Wartungssonntag"), /*#__PURE__*/React.createElement("select", {
     name: "filterMaintenanceSunday",
     id: "filter-wartungssonntag",
-    className: "px-4 py-2 border border-gray-300 rounded-lg bg-purple-50",
+    className: "px-2 py-1 border border-gray-300 rounded-md bg-purple-50 text-sm max-w-[150px] truncate",
     defaultValue: "",
     onChange: e => {
       const selectedId = parseInt(e.target.value);
       const selected = maintenanceSundays.find(s => s.id === selectedId);
       if (!selected || !selected.date) return;
-
-      // Ensure week view mode for offset-based navigation
       if (viewMode !== 'week') setViewMode('week');
-
-      // Calculate offset: rangeStart is 60 days before today
-      // Calculate offset: rangeStart is 60 days before Jan 1 of selected year
       const rangeStart = new Date(year, 0, 1);
       rangeStart.setDate(rangeStart.getDate() - 60);
       const targetDate = new Date(selected.date);
       const dayIndex = Math.round((targetDate - rangeStart) / (1000 * 60 * 60 * 24));
-      const daysToShow = 65;
-      const totalDays = 420;
-      const centerOffset = Math.max(0, Math.min(totalDays - daysToShow, dayIndex - Math.floor(daysToShow / 2)));
-      setViewOffset(centerOffset);
+      setViewOffset(Math.max(0, Math.min(420 - 65, dayIndex - 32)));
     }
   }, /*#__PURE__*/React.createElement("option", {
     value: "",
@@ -4197,9 +4395,9 @@ const SAPBasisPlanner = () => {
     value: s.id
   }, ['I', 'II', 'III', 'IV'][s.id - 1], " - ", formatDateDE(s.date)))), canEdit && /*#__PURE__*/React.createElement("button", {
     onClick: openMaintenanceDialog,
-    className: "px-3 py-2 text-purple-700 border border-purple-300 rounded-lg hover:bg-purple-50 text-sm",
+    className: "px-2 py-1 text-purple-700 border border-purple-300 rounded-md hover:bg-purple-50 text-xs text-center leading-none",
     title: "Wartungssonntage bearbeiten"
-  }, "\u2699\uFE0F"))))), /*#__PURE__*/React.createElement("div", {
+  }, "\u2699\uFE0F")))), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 mb-6"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setActiveTab('gantt'),
@@ -4220,88 +4418,6 @@ const SAPBasisPlanner = () => {
     onClick: () => setActiveTab('auswertung'),
     className: `px-6 py-3 rounded-lg font-medium transition-colors ${activeTab === 'auswertung' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`
   }, "\uD83D\uDCC8 Auswertung")), /*#__PURE__*/React.createElement("div", {
-    className: "bg-white rounded-lg shadow-lg p-4 mb-6",
-    style: {
-      display: activeTab === 'gantt' ? 'block' : 'none'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-3 mb-2"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-semibold"
-  }, "Aktivit\xE4tstypen:"), canEdit && /*#__PURE__*/React.createElement("button", {
-    onClick: addActivityType,
-    className: "text-sm px-2 py-1 border border-gray-300 rounded hover:bg-gray-100"
-  }, "+ Aktivit\xE4t hinzuf\xFCgen")), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-wrap gap-3"
-  }, activityTypes.map(type => /*#__PURE__*/React.createElement("div", {
-    key: type.id,
-    className: "flex items-center gap-2 group"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-4 h-4 rounded",
-    style: {
-      backgroundColor: type.color
-    }
-  }), canEdit && editingTypeId === type.id ? /*#__PURE__*/React.createElement("input", {
-    name: "autoField_2",
-    type: "text",
-    value: type.label,
-    onChange: e => renameActivityType(type.id, e.target.value),
-    onBlur: () => setEditingTypeId(null),
-    onKeyDown: e => e.key === 'Enter' && setEditingTypeId(null),
-    className: "text-sm px-1 border border-blue-400 rounded w-32",
-    autoFocus: true,
-    maxLength: "24"
-  }) : /*#__PURE__*/React.createElement("span", {
-    className: `text-sm ${canEdit ? 'cursor-pointer hover:text-blue-600' : ''}`,
-    onClick: () => canEdit && setEditingTypeId(type.id),
-    title: canEdit ? 'Klicken zum Umbenennen' : ''
-  }, type.label), canEdit && /*#__PURE__*/React.createElement("button", {
-    onClick: () => deleteActivityType(type.id),
-    className: "opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 text-xs",
-    title: "L\xF6schen"
-  }, "\xD7")))), /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-wrap gap-4 mt-3 pt-3 border-t border-gray-200"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 mr-4 font-bold text-gray-700"
-  }, "Zeichenschl\xFCssel:"), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-4 h-4 weekend-pattern border border-gray-300"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm"
-  }, "Wochenende")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-4 h-4 holiday-pattern border border-gray-300"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm"
-  }, "Feiertag")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-4 h-4 today-marker border border-gray-300"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm"
-  }, "Heute (", formatDateDE(today), ")")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-4 h-4 maintenance-pattern border border-purple-400"
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm"
-  }, "Wartungssonntag")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 ml-4"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "relative h-6 w-24 flex items-center"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "absolute inset-x-0 top-1 bottom-1 border border-pink-500 rounded z-0"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "absolute left-0 top-1 bottom-1 w-3 bg-pink-500 rounded-l z-10 text-[8px] text-white flex items-center justify-center"
-  }, "S.."), /*#__PURE__*/React.createElement("div", {
-    className: "absolute left-3 right-8 top-1 bottom-1 weekend-pattern opacity-50 z-0"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "absolute right-0 top-1 bottom-1 w-8 bg-pink-500 rounded-r z-10"
-  })), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm"
-  }, "Zusammenh\xE4ngende Aktivit\xE4t")))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: activeTab === 'gantt' ? 'block' : 'none'
     }
@@ -4613,11 +4729,23 @@ const SAPBasisPlanner = () => {
           onClick: () => deleteActivity(landscape.id, sid.id, activity.id),
           className: "flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200",
           title: "Aktivit\xE4t unwiderruflich l\xF6schen"
-        }, /*#__PURE__*/React.createElement(TrashIcon, null)), activity.status === 'COMPLETED' && /*#__PURE__*/React.createElement("button", {
+        }, /*#__PURE__*/React.createElement(TrashIcon, null)), activity.status === 'COMPLETED' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
           onClick: () => archiveActivity(landscape.id, sid.id, activity.id),
           className: "flex items-center justify-center w-8 h-8 bg-stone-200 text-stone-700 border border-stone-300 rounded hover:bg-stone-300 transition-colors shadow-sm",
           title: "Aktivit\xE4t archivieren (Einfrieren)"
-        }, "\uD83D\uDCE6"), activity.status === 'ARCHIVED' && /*#__PURE__*/React.createElement("div", {
+        }, "\uD83D\uDCE6"), user?.role === 'teamlead' && /*#__PURE__*/React.createElement("button", {
+          onClick: () => deleteActivity(landscape.id, sid.id, activity.id),
+          className: "flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200",
+          title: "Aktivit\xE4t unwiderruflich l\xF6schen"
+        }, /*#__PURE__*/React.createElement(TrashIcon, null))), activity.status === 'ARCHIVED' && user?.role === 'teamlead' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+          onClick: () => unarchiveActivity(landscape.id, sid.id, activity.id),
+          className: "flex items-center justify-center w-8 h-8 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors",
+          title: "Aktivit\xE4t wiederherstellen"
+        }, "\uD83D\uDD04"), /*#__PURE__*/React.createElement("button", {
+          onClick: () => deleteActivity(landscape.id, sid.id, activity.id),
+          className: "flex items-center justify-center w-8 h-8 bg-red-100 text-red-700 rounded hover:bg-red-200",
+          title: "Aktivit\xE4t unwiderruflich l\xF6schen"
+        }, /*#__PURE__*/React.createElement(TrashIcon, null))), activity.status === 'ARCHIVED' && user?.role !== 'teamlead' && /*#__PURE__*/React.createElement("div", {
           className: "flex items-center justify-center w-8 h-8 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded cursor-not-allowed shadow-none grayscale",
           title: "Archiviert"
         }, "\uD83D\uDCE6")))), activity.type === 'update' && canEdit && !isLockedByOther && /*#__PURE__*/React.createElement("div", {
@@ -4721,11 +4849,23 @@ const SAPBasisPlanner = () => {
           onClick: () => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id),
           className: "w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center hover:bg-red-100",
           title: "Sub-Aktivit\xE4t unwiderruflich l\xF6schen"
-        }, /*#__PURE__*/React.createElement(TrashIcon, null)), subActivity.status === 'COMPLETED' && /*#__PURE__*/React.createElement("button", {
+        }, /*#__PURE__*/React.createElement(TrashIcon, null)), subActivity.status === 'COMPLETED' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
           onClick: () => archiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id),
           className: "w-6 h-6 bg-stone-200 text-stone-700 border border-stone-300 rounded flex items-center justify-center hover:bg-stone-300 shadow-sm",
           title: "Sub-Aktivit\xE4t archivieren"
-        }, "\uD83D\uDCE6"), subActivity.status === 'ARCHIVED' && /*#__PURE__*/React.createElement("div", {
+        }, "\uD83D\uDCE6"), user?.role === 'teamlead' && /*#__PURE__*/React.createElement("button", {
+          onClick: () => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id),
+          className: "w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center hover:bg-red-100",
+          title: "Sub-Aktivit\xE4t unwiderruflich l\xF6schen"
+        }, /*#__PURE__*/React.createElement(TrashIcon, null))), subActivity.status === 'ARCHIVED' && user?.role === 'teamlead' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+          onClick: () => unarchiveSubActivity(landscape.id, sid.id, activity.id, subActivity.id),
+          className: "w-6 h-6 bg-blue-50 text-blue-600 rounded flex items-center justify-center hover:bg-blue-100 transition-colors",
+          title: "Sub-Aktivit\xE4t wiederherstellen"
+        }, "\uD83D\uDD04"), /*#__PURE__*/React.createElement("button", {
+          onClick: () => deleteSubActivity(landscape.id, sid.id, activity.id, subActivity.id),
+          className: "w-6 h-6 bg-red-50 text-red-600 rounded flex items-center justify-center hover:bg-red-100",
+          title: "Sub-Aktivit\xE4t unwiderruflich l\xF6schen"
+        }, /*#__PURE__*/React.createElement(TrashIcon, null))), subActivity.status === 'ARCHIVED' && user?.role !== 'teamlead' && /*#__PURE__*/React.createElement("div", {
           className: "w-6 h-6 bg-stone-100/50 text-stone-400 border border-stone-200/50 rounded flex items-center justify-center cursor-not-allowed shadow-none grayscale",
           title: "Archiviert"
         }, "\uD83D\uDCE6")))))));
@@ -4767,14 +4907,10 @@ const SAPBasisPlanner = () => {
   }))), activeTab === 'team' && /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex justify-between items-center mb-6"
+    className: "flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b pb-4 border-gray-200"
   }, /*#__PURE__*/React.createElement("h2", {
-    className: "text-2xl font-bold text-gray-800"
-  }, "\uD83D\uDC65 Team-Auslastung")), /*#__PURE__*/React.createElement("div", {
-    className: "mb-8"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "text-lg font-semibold text-gray-700 mb-4"
-  }, "Teammitglieder verwalten"), canManageTeam && /*#__PURE__*/React.createElement("form", {
+    className: "text-2xl font-bold text-gray-800 flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDC65"), " Team-Auslastung"), canManageTeam && /*#__PURE__*/React.createElement("form", {
     onSubmit: async e => {
       e.preventDefault();
       const form = e.target;
@@ -4791,15 +4927,15 @@ const SAPBasisPlanner = () => {
         }
       }
     },
-    className: "flex gap-3 mb-4 items-end"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("label", {
     htmlFor: "add-team-user",
-    className: "block text-sm font-medium text-gray-700 mb-1"
-  }, "Name"), /*#__PURE__*/React.createElement("select", {
+    className: "hidden sm:block text-sm font-medium text-gray-700"
+  }, "Teammitglied:"), /*#__PURE__*/React.createElement("select", {
     id: "add-team-user",
     name: "userId",
     required: true,
-    className: "px-4 py-2 border border-gray-300 rounded-lg w-64 bg-white"
+    className: "px-3 py-1.5 border border-gray-300 rounded-md w-56 bg-white text-sm"
   }, /*#__PURE__*/React.createElement("option", {
     value: ""
   }, "- Bitte w\xE4hlen -"), users && users.filter(u => u.role !== 'viewer').map(u => {
@@ -4808,10 +4944,12 @@ const SAPBasisPlanner = () => {
       key: u.id,
       value: u.id
     }, displayName);
-  }))), /*#__PURE__*/React.createElement("button", {
+  })), /*#__PURE__*/React.createElement("button", {
     type: "submit",
-    className: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-  }, "+ Hinzuf\xFCgen")), /*#__PURE__*/React.createElement("table", {
+    className: "px-4 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium text-sm whitespace-nowrap"
+  }, "+ Hinzuf\xFCgen"))), /*#__PURE__*/React.createElement("div", {
+    className: "mb-4 overflow-x-auto"
+  }, /*#__PURE__*/React.createElement("table", {
     className: "w-full border-collapse"
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
     className: "bg-gray-100"
@@ -4820,6 +4958,8 @@ const SAPBasisPlanner = () => {
   }, "Teammitglied"), /*#__PURE__*/React.createElement("th", {
     className: "text-left p-3 font-semibold"
   }, "K\xFCrzel"), canManageTeam && /*#__PURE__*/React.createElement("th", {
+    className: "text-center p-3 font-semibold"
+  }, "Std/Woche"), canManageTeam && /*#__PURE__*/React.createElement("th", {
     className: "text-center p-3 font-semibold"
   }, "Arbeitstage"), canManageTeam && /*#__PURE__*/React.createElement("th", {
     className: "text-center p-3 font-semibold"
@@ -4913,6 +5053,30 @@ const SAPBasisPlanner = () => {
     }, member.name), /*#__PURE__*/React.createElement("td", {
       className: "p-3 font-mono font-bold text-blue-600"
     }, member.abbreviation), canManageTeam && /*#__PURE__*/React.createElement("td", {
+      className: "p-3 text-center"
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "number",
+      value: member.weekly_hours !== undefined ? member.weekly_hours : 40,
+      step: "4",
+      min: "4",
+      max: "40",
+      title: "Wochenstunden (z.B. 40 = Vollzeit, 20 = 50%, 8 = 1 Tag/Woche)",
+      onChange: async e => {
+        const val = Math.min(40, Math.max(4, parseFloat(e.target.value) || 40));
+        try {
+          await api.updateTeamMember(member.id, {
+            weekly_hours: val
+          });
+          setTeamMembers(prev => prev.map(m => m.id === member.id ? {
+            ...m,
+            weekly_hours: val
+          } : m));
+        } catch (err) {
+          alert(err.message);
+        }
+      },
+      className: "w-16 text-center border border-gray-300 rounded px-1 py-0.5"
+    })), canManageTeam && /*#__PURE__*/React.createElement("td", {
       className: "p-3 text-center"
     }, /*#__PURE__*/React.createElement("input", {
       name: "autoField_17",
@@ -6795,7 +6959,15 @@ const SAPBasisPlanner = () => {
       className: "text-2xl font-bold text-gray-800"
     }, "\uD83D\uDCC8 Auswertung \u2014 ", getFilterLabel()), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-2 flex-wrap auswertung-controls"
-    }, /*#__PURE__*/React.createElement("select", {
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex rounded-lg border border-gray-300 overflow-hidden"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => setAuswertungSubTab('stats'),
+      className: `px-4 py-2 text-sm font-medium transition-colors ${auswertungSubTab === 'stats' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`
+    }, "\uD83D\uDCCA Statistik"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setAuswertungSubTab('heatmap'),
+      className: `px-4 py-2 text-sm font-medium transition-colors border-l border-gray-300 ${auswertungSubTab === 'heatmap' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`
+    }, "\uD83C\uDF21\uFE0F Kapazit\xE4t")), auswertungSubTab === 'stats' && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("select", {
       value: filterType,
       onChange: e => {
         const t = e.target.value;
@@ -6845,7 +7017,7 @@ const SAPBasisPlanner = () => {
       onClick: handlePrint,
       className: "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium no-print",
       title: "Drucken"
-    }, "\uD83D\uDDA8\uFE0F Drucken"))), allActivities.length === 0 ?
+    }, "\uD83D\uDDA8\uFE0F Drucken")))), auswertungSubTab === 'stats' && (allActivities.length === 0 ?
     /*#__PURE__*/
     /* ── Empty State ── */
     React.createElement("div", {
@@ -6956,7 +7128,291 @@ const SAPBasisPlanner = () => {
       className: "text-center px-3 py-2 border border-gray-300"
     }, Math.round(daysByType[t.id] * 100) / 100)), /*#__PURE__*/React.createElement("td", {
       className: "text-center px-3 py-2 border border-gray-300"
-    }, Math.round(totalDays * 100) / 100))))))));
+    }, Math.round(totalDays * 100) / 100)))))))), auswertungSubTab === 'heatmap' && (() => {
+      const MONTH_SHORT = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+
+      // Count working days in a month (Mon-Fri, excluding holidays)
+      const workingDaysInMonth = (yr, monthIdx) => {
+        const holidays = getGermanHolidays(yr, bundesland);
+        let count = 0;
+        const d = new Date(yr, monthIdx, 1);
+        while (d.getMonth() === monthIdx) {
+          const dow = d.getDay();
+          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          if (dow !== 0 && dow !== 6 && !holidays.has(iso)) count++;
+          d.setDate(d.getDate() + 1);
+        }
+        return count;
+      };
+
+      // Count vacation days for a member in a given month
+      // urlaub has user_id; team_members have abbreviation synced from users
+      const vacationDaysInMonth = (member, yr, monthIdx) => {
+        const memberAbbr = member.abbreviation;
+        const memberName = member.name;
+        let count = 0;
+        urlaub.forEach(u => {
+          // Match by abbreviation or username
+          if (u.abbreviation !== memberAbbr && u.username !== memberName) return;
+          const startD = new Date(Math.max(new Date(u.start_date), new Date(yr, monthIdx, 1)));
+          const endD = new Date(Math.min(new Date(u.end_date), new Date(yr, monthIdx + 1, 0)));
+          if (startD > endD) return;
+          const cur = new Date(startD);
+          while (cur <= endD) {
+            const dow = cur.getDay();
+            if (dow !== 0 && dow !== 6) count++;
+            cur.setDate(cur.getDate() + 1);
+          }
+        });
+        return count;
+      };
+
+      // Count training days for a member in a given month
+      const trainingDaysInMonth = (member, yr, monthIdx) => {
+        const memberName = (member.name || '').toLowerCase();
+        const memberAbbr = (member.abbreviation || '').toLowerCase();
+        let total = 0;
+        trainings.forEach(t => {
+          if (!t.booked_date || t.booked_date <= 0) return;
+          const parts = (t.participants || '').toLowerCase();
+          if (!parts.includes(memberName) && !parts.includes(memberAbbr)) return;
+          // Assign training days to months based on date1/date2/date3
+          const dates = [t.date1, t.date2, t.date3].filter(Boolean);
+          const perDateDays = dates.length > 0 ? (parseInt(t.days) || 0) / dates.length : 0;
+          dates.forEach(dateStr => {
+            if (!dateStr) return;
+            const d = new Date(dateStr);
+            if (d.getFullYear() === yr && d.getMonth() === monthIdx) {
+              total += perDateDays;
+            }
+          });
+          // Fallback: no dates set but days > 0 — ignore (no month info)
+        });
+        return Math.round(total * 10) / 10;
+      };
+
+      // Count planned activity days for a member in a given month
+      const plannedDaysInMonth = (member, yr, monthIdx) => {
+        const firstDay = `${yr}-${String(monthIdx + 1).padStart(2, '0')}-01`;
+        const lastDay = new Date(yr, monthIdx + 1, 0);
+        const lastDayStr = `${yr}-${String(monthIdx + 1).padStart(2, '0')}-${String(lastDay.getDate()).padStart(2, '0')}`;
+        let total = 0;
+        landscapes.forEach(l => {
+          l.sids.forEach(sid => {
+            (sid.activities || []).forEach(a => {
+              const actMem = a.teamMemberId || a.team_member_id;
+              if (actMem !== member.id) return;
+              const sd = a.startDate || a.start_date;
+              const ed = a.endDate || a.end_date || sd;
+              if (!sd || ed < firstDay || sd > lastDayStr) return;
+              // Clamp to month
+              const actStart = sd < firstDay ? firstDay : sd;
+              const actEnd = ed > lastDayStr ? lastDayStr : ed;
+              // Count working days in the clamped range
+              const holidays = getGermanHolidays(yr, bundesland);
+              const cur = new Date(actStart);
+              const end = new Date(actEnd);
+              while (cur <= end) {
+                const dow = cur.getDay();
+                const iso = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+                if (dow !== 0 && dow !== 6 && !holidays.has(iso)) total++;
+                cur.setDate(cur.getDate() + 1);
+              }
+              // Handle sub-activities
+              (a.subActivities || []).forEach(sub => {
+                const subMem = sub.teamMemberId || sub.team_member_id;
+                if (subMem !== member.id) return;
+                const ssd = sub.startDate || sub.start_date;
+                const sed = sub.endDate || sub.end_date || ssd;
+                if (!ssd || sed < firstDay || ssd > lastDayStr) return;
+                const sStart = ssd < firstDay ? firstDay : ssd;
+                const sEnd = sed > lastDayStr ? lastDayStr : sed;
+                const curS = new Date(sStart);
+                const endS = new Date(sEnd);
+                while (curS <= endS) {
+                  const dow = curS.getDay();
+                  const isoS = `${curS.getFullYear()}-${String(curS.getMonth() + 1).padStart(2, '0')}-${String(curS.getDate()).padStart(2, '0')}`;
+                  if (dow !== 0 && dow !== 6 && !holidays.has(isoS)) total++;
+                  curS.setDate(curS.getDate() + 1);
+                }
+              });
+            });
+            // Series occurrences
+            (sid.series || []).forEach(series => {
+              (series.occurrences || []).forEach(occ => {
+                const occMem = occ.teamMemberId || occ.team_member_id || series.teamMemberId || series.team_member_id;
+                if (parseInt(occMem) !== member.id) return;
+                if (!occ.date || occ.date < firstDay || occ.date > lastDayStr) return;
+                let dur = 0.5;
+                if (occ.start_time && occ.end_time) {
+                  const [sh, sm] = occ.start_time.split(':').map(Number);
+                  const [eh, em] = occ.end_time.split(':').map(Number);
+                  dur = Math.max(0.125, (eh * 60 + em - (sh * 60 + sm)) / 480);
+                }
+                total += dur;
+              });
+            });
+          });
+        });
+        return Math.round(total * 10) / 10;
+      };
+      const getCellColor = (available, gross) => {
+        if (gross <= 0) return {
+          bg: darkMode ? '#1f2937' : '#f3f4f6',
+          text: darkMode ? '#9ca3af' : '#9ca3af'
+        };
+        const pct = available / gross;
+        if (pct > 0.5) return {
+          bg: darkMode ? '#064e3b' : '#d1fae5',
+          text: darkMode ? '#6ee7b7' : '#065f46'
+        };
+        if (pct > 0.25) return {
+          bg: darkMode ? '#78350f' : '#fef3c7',
+          text: darkMode ? '#fcd34d' : '#92400e'
+        };
+        if (pct > 0) return {
+          bg: darkMode ? '#7c2d12' : '#fed7aa',
+          text: darkMode ? '#fdba74' : '#9a3412'
+        };
+        return {
+          bg: darkMode ? '#7f1d1d' : '#fee2e2',
+          text: darkMode ? '#fca5a5' : '#991b1b'
+        };
+      };
+      if (teamMembers.length === 0) {
+        return /*#__PURE__*/React.createElement("div", {
+          className: "text-center py-16"
+        }, /*#__PURE__*/React.createElement("div", {
+          className: "text-6xl mb-4 opacity-30"
+        }, "\uD83D\uDC65"), /*#__PURE__*/React.createElement("p", {
+          className: "text-gray-500 text-lg"
+        }, "Keine Teammitglieder vorhanden"), /*#__PURE__*/React.createElement("p", {
+          className: "text-gray-400 text-sm mt-1"
+        }, "F\xFCgen Sie Teammitglieder im Tab \"Team\" hinzu."));
+      }
+      return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-4 mb-4 text-xs text-gray-600 flex-wrap"
+      }, /*#__PURE__*/React.createElement("span", {
+        className: "font-semibold"
+      }, "Legende (verf\xFCgbare Kapazit\xE4t):"), /*#__PURE__*/React.createElement("span", {
+        className: "px-2 py-1 rounded",
+        style: {
+          background: darkMode ? '#064e3b' : '#d1fae5',
+          color: darkMode ? '#6ee7b7' : '#065f46'
+        }
+      }, "\u25CF >50% frei"), /*#__PURE__*/React.createElement("span", {
+        className: "px-2 py-1 rounded",
+        style: {
+          background: darkMode ? '#78350f' : '#fef3c7',
+          color: darkMode ? '#fcd34d' : '#92400e'
+        }
+      }, "\u25CF 25\u201350% frei"), /*#__PURE__*/React.createElement("span", {
+        className: "px-2 py-1 rounded",
+        style: {
+          background: darkMode ? '#7c2d12' : '#fed7aa',
+          color: darkMode ? '#fdba74' : '#9a3412'
+        }
+      }, "\u25CF 1\u201325% frei"), /*#__PURE__*/React.createElement("span", {
+        className: "px-2 py-1 rounded",
+        style: {
+          background: darkMode ? '#7f1d1d' : '#fee2e2',
+          color: darkMode ? '#fca5a5' : '#991b1b'
+        }
+      }, "\u25CF \u22640% (\xFCberlastet)"), /*#__PURE__*/React.createElement("span", {
+        className: "ml-2 text-gray-500"
+      }, "Zahlen = verf\xFCgbare Tage | geplant + frei = Nettobasis")), /*#__PURE__*/React.createElement("div", {
+        className: "overflow-x-auto"
+      }, /*#__PURE__*/React.createElement("table", {
+        className: "w-full border-collapse text-sm"
+      }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
+        className: "bg-gray-100"
+      }, /*#__PURE__*/React.createElement("th", {
+        className: "text-left px-3 py-2 border border-gray-300 font-semibold min-w-32"
+      }, "Mitarbeiter"), /*#__PURE__*/React.createElement("th", {
+        className: "text-center px-2 py-2 border border-gray-300 text-xs"
+      }, "Std/Wo"), MONTH_SHORT.map((m, i) => {
+        const gross = workingDaysInMonth(year, i);
+        return /*#__PURE__*/React.createElement("th", {
+          key: i,
+          className: "text-center px-2 py-2 border border-gray-300 font-semibold",
+          style: {
+            minWidth: '70px'
+          }
+        }, m, /*#__PURE__*/React.createElement("br", null), /*#__PURE__*/React.createElement("span", {
+          className: "text-xs font-normal text-gray-500"
+        }, gross, "AT"));
+      }), /*#__PURE__*/React.createElement("th", {
+        className: "text-center px-3 py-2 border border-gray-300 font-semibold"
+      }, "Jahres-\u2211"))), /*#__PURE__*/React.createElement("tbody", null, teamMembers.map((member, idx) => {
+        const weeklyHours = member.weekly_hours !== undefined ? parseFloat(member.weekly_hours) : 40;
+        const partTimeFactor = weeklyHours / 40;
+        let yearFree = 0;
+        let yearGross = 0;
+        return /*#__PURE__*/React.createElement("tr", {
+          key: member.id,
+          className: idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+        }, /*#__PURE__*/React.createElement("td", {
+          className: "px-3 py-2 border border-gray-300 font-medium"
+        }, member.name, partTimeFactor < 1 && /*#__PURE__*/React.createElement("span", {
+          className: "ml-1 text-xs text-blue-600 font-normal"
+        }, "(", weeklyHours, "h)")), /*#__PURE__*/React.createElement("td", {
+          className: "text-center px-2 py-2 border border-gray-300 text-xs text-gray-600"
+        }, weeklyHours, "h"), MONTH_SHORT.map((m, monthIdx) => {
+          const rawGross = workingDaysInMonth(year, monthIdx);
+          const gross = Math.round(rawGross * partTimeFactor * 10) / 10;
+          const vacation = Math.min(vacationDaysInMonth(member, year, monthIdx) * partTimeFactor, gross);
+          const training = trainingDaysInMonth(member, year, monthIdx);
+          const planned = plannedDaysInMonth(member, year, monthIdx);
+          const available = Math.round((gross - vacation - training - planned) * 10) / 10;
+          yearFree += available;
+          yearGross += gross;
+          const {
+            bg,
+            text
+          } = getCellColor(available, gross);
+          const tooltip = `${member.name} – ${m}\nBrutto: ${gross}d | Urlaub: ${Math.round(vacation * 10) / 10}d | Schulung: ${training}d | Geplant: ${planned}d | Frei: ${available}d`;
+          return /*#__PURE__*/React.createElement("td", {
+            key: monthIdx,
+            title: tooltip,
+            className: "text-center px-2 py-2 border border-gray-300 cursor-default",
+            style: {
+              backgroundColor: bg,
+              color: text
+            }
+          }, /*#__PURE__*/React.createElement("div", {
+            className: "font-bold text-sm"
+          }, available > 0 ? '+' + available : available), /*#__PURE__*/React.createElement("div", {
+            className: "text-xs opacity-70"
+          }, Math.round(planned * 10) / 10, "g"));
+        }), (() => {
+          let totalFree = 0;
+          let totalGross = 0;
+          for (let mi = 0; mi < 12; mi++) {
+            const rawG = workingDaysInMonth(year, mi);
+            const g = Math.round(rawG * partTimeFactor * 10) / 10;
+            const v = Math.min(vacationDaysInMonth(member, year, mi) * partTimeFactor, g);
+            const tr2 = trainingDaysInMonth(member, year, mi);
+            const pl = plannedDaysInMonth(member, year, mi);
+            totalFree += g - v - tr2 - pl;
+            totalGross += g;
+          }
+          totalFree = Math.round(totalFree * 10) / 10;
+          const {
+            bg,
+            text
+          } = getCellColor(totalFree, totalGross);
+          return /*#__PURE__*/React.createElement("td", {
+            className: "text-center px-3 py-2 border border-gray-300 font-bold",
+            style: {
+              backgroundColor: bg,
+              color: text
+            }
+          }, totalFree > 0 ? '+' + totalFree : totalFree, "d");
+        })());
+      })))), /*#__PURE__*/React.createElement("p", {
+        className: "text-xs text-gray-400 mt-3"
+      }, "AT = Arbeitstage (ohne Wochenenden & Feiertage ", bundesland, "). Zellen: oben = freie Tage, unten = geplante Tage. Urlaubsabgleich erfolgt \xFCber K\xFCrzel. Teilzeit skaliert die Brutto-Kapazit\xE4t proportional zu Std/Woche."));
+    })());
   })(), /*#__PURE__*/React.createElement("div", {
     className: "text-center text-gray-500 text-sm mt-8 mb-4"
   }, "SAP Basis Jahresplaner \u2022 ", year, " \u2022 ", appVersion && `Version ${appVersion} • `, "Optima Solutions GmbH \u2022 Daten werden in SQLite-Datenbank gespeichert"), showLogsDialog && /*#__PURE__*/React.createElement("div", {
@@ -7027,6 +7483,7 @@ const SAPBasisPlanner = () => {
     activityTypes: activityTypes,
     teamMembers: teamMembers,
     canEdit: canEdit,
+    user: user,
     year: year,
     api: api,
     onClose: async () => {
