@@ -181,6 +181,28 @@ const getGermanHolidays = (year, bundesland) => {
   return holidays;
 };
 
+/** Cache for holiday sets to avoid recomputation when crossing year boundaries */
+const _holidayCache = new Map();
+const getHolidaysForYear = (year, bundesland) => {
+  const key = `${year}_${bundesland}`;
+  if (_holidayCache.has(key)) return _holidayCache.get(key);
+  const holidays = getGermanHolidays(year, bundesland);
+  _holidayCache.set(key, holidays);
+  // Keep cache small: only retain last 5 entries
+  if (_holidayCache.size > 5) {
+    const firstKey = _holidayCache.keys().next().value;
+    _holidayCache.delete(firstKey);
+  }
+  return holidays;
+};
+
+/** Check if a given date string is a holiday for its own year */
+const isHoliday = (dateStr, bundesland) => {
+  const year = parseInt(dateStr.substring(0, 4));
+  const holidays = getHolidaysForYear(year, bundesland);
+  return holidays.has(dateStr);
+};
+
 const formatDateISO = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -192,12 +214,16 @@ const formatDateISO = (date) => {
  * Calculate end date based on working days (Arbeitstage).
  * Duration 0 = sub-day (time-based), start and end are the same day.
  * includesWeekend = true means weekends ARE working days (only holidays excluded).
+ * 
+ * Multi-year aware: derives the correct holiday calendar from each day's own year,
+ * so activities crossing year boundaries (e.g. Dec 30 → Jan 3) work correctly.
+ * The `year` and `bundesland` params are kept for API compatibility; `bundesland`
+ * is used for holiday lookups. `year` is now ignored — the start date's own year is used.
  */
 const calculateEndDate = (startDateStr, durationDays, year, bundesland, includesWeekend = false) => {
   if (!startDateStr) return null;
   if (durationDays === 0) return startDateStr;
 
-  const holidays = getGermanHolidays(year, bundesland);
   let current = new Date(startDateStr);
   let workingDaysCount = 0;
 
@@ -207,9 +233,9 @@ const calculateEndDate = (startDateStr, durationDays, year, bundesland, includes
 
     let isWorkingDay;
     if (includesWeekend) {
-      isWorkingDay = !holidays.has(dateStr);
+      isWorkingDay = !isHoliday(dateStr, bundesland);
     } else {
-      isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6 && !holidays.has(dateStr);
+      isWorkingDay = dayOfWeek !== 0 && dayOfWeek !== 6 && !isHoliday(dateStr, bundesland);
     }
 
     if (isWorkingDay) {
