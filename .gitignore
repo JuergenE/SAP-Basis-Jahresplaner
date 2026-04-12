@@ -34,3 +34,6 @@ jest-results.json
 runs.json
 jobs.json
 job_log.txt
+
+# Editor settings
+.vscode/
