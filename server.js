@@ -2479,7 +2479,7 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
   // Role-based creation restrictions
   if (req.user.role === 'teamlead') {
     // Teamlead can create admin, user, teamlead, or viewer
-    if (!['admin', 'user', 'teamlead', 'viewer'].includes(targetRole)) {
+    if (!['admin', 'user', 'teamlead', 'viewer', 'projekt'].includes(targetRole)) {
       return res.status(400).json({ error: 'Ungültige Rolle' });
     }
   } else if (req.user.role === 'admin') {
@@ -2559,7 +2559,7 @@ app.put('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
     if (req.user.role !== 'teamlead') {
       return res.status(403).json({ error: 'Nur Teamleiter können Rollen ändern' });
     }
-    if (!['admin', 'user', 'teamlead', 'viewer'].includes(role)) {
+    if (!['admin', 'user', 'teamlead', 'viewer', 'projekt'].includes(role)) {
       return res.status(400).json({ error: 'Ungültige Rolle' });
     }
     updates.push('role = ?');
