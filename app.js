@@ -1846,6 +1846,11 @@ const SAPBasisPlanner = () => {
   // canManageTeam: ONLY Teamlead can manage team members (add/delete/edit days)
   const canManageTeam = user?.role === 'teamlead';
 
+  // Projekt role: read-only, Gantt-only view restricted to tagged landscapes
+  const isProjektUser = user?.role === 'projekt';
+
+  // Roles that can ONLY see the Gantt tab (no other tabs)
+  const isGanttOnlyRole = isProjektUser;
   // 24-hour rule: Regular users can only edit data in the future or within the last 24 hours.
   // Teamleads can always make corrections to old data.
   const isDateEditable = useCallback(dateStr => {
@@ -4168,14 +4173,14 @@ const SAPBasisPlanner = () => {
       setShowToolsDropdown(false);
     },
     className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
-  }, "Gantt-Ansicht"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
+  }, "Gantt-Ansicht"), user?.role !== 'viewer' && user?.role !== 'projekt' && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       exportSkillsCSV();
       setShowCsvDropdown(false);
       setShowToolsDropdown(false);
     },
     className: "w-full text-left px-8 py-2 text-xs hover:bg-gray-100"
-  }, "Skills & Schulungen"), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
+  }, "Skills & Schulungen"), user?.role !== 'viewer' && user?.role !== 'projekt' && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       exportBereitschaftCSV();
       setShowCsvDropdown(false);
@@ -4439,7 +4444,7 @@ const SAPBasisPlanner = () => {
     onClick: openMaintenanceDialog,
     className: "px-2 py-1 text-purple-700 border border-purple-300 rounded-md hover:bg-purple-50 text-xs text-center leading-none",
     title: "Wartungssonntage bearbeiten"
-  }, "\u2699\uFE0F")))), /*#__PURE__*/React.createElement("div", {
+  }, "\u2699\uFE0F")))), !isGanttOnlyRole && /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 mb-6"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setActiveTab('gantt'),
@@ -4463,7 +4468,7 @@ const SAPBasisPlanner = () => {
     style: {
       display: activeTab === 'gantt' ? 'block' : 'none'
     }
-  }, renderGanttChart()), /*#__PURE__*/React.createElement("div", {
+  }, renderGanttChart()), !isGanttOnlyRole && /*#__PURE__*/React.createElement("div", {
     className: "bg-white rounded-lg shadow-lg p-4 md:p-6",
     style: {
       display: activeTab === 'gantt' ? 'block' : 'none'
@@ -5532,7 +5537,9 @@ const SAPBasisPlanner = () => {
     value: "teamlead"
   }, "Teamleiter"), user.role === 'teamlead' && /*#__PURE__*/React.createElement("option", {
     value: "viewer"
-  }, "Viewer (Nur Gantt)"))), /*#__PURE__*/React.createElement("div", {
+  }, "Viewer (Nur Gantt)"), user.role === 'teamlead' && /*#__PURE__*/React.createElement("option", {
+    value: "projekt"
+  }, "Projekt (Nur Projekt-Gantt)"))), /*#__PURE__*/React.createElement("div", {
     className: "w-20"
   }, /*#__PURE__*/React.createElement("label", {
     htmlFor: "newAbbreviation",

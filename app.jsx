@@ -3707,10 +3707,10 @@ const SAPBasisPlanner = () => {
                     {showCsvDropdown && (
                       <div className="bg-gray-50 border-y border-gray-100">
                         <button onClick={() => { exportCSV(); setShowCsvDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">Gantt-Ansicht</button>
-                        {user?.role !== 'viewer' && (
+                        {user?.role !== 'viewer' && user?.role !== 'projekt' && (
                           <button onClick={() => { exportSkillsCSV(); setShowCsvDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">Skills & Schulungen</button>
                         )}
-                        {user?.role !== 'viewer' && (
+                        {user?.role !== 'viewer' && user?.role !== 'projekt' && (
                           <button onClick={() => { exportBereitschaftCSV(); setShowCsvDropdown(false); setShowToolsDropdown(false); }} className="w-full text-left px-8 py-2 text-xs hover:bg-gray-100">Bereitschaft</button>
                         )}
                         {(user?.role === 'admin' || user?.role === 'teamlead') && (
