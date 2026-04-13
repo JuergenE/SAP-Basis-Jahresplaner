@@ -1246,6 +1246,11 @@ const SAPBasisPlanner = () => {
   // canManageTeam: ONLY Teamlead can manage team members (add/delete/edit days)
   const canManageTeam = user?.role === 'teamlead';
 
+  // Projekt role: read-only, Gantt-only view restricted to tagged landscapes
+  const isProjektUser = user?.role === 'projekt';
+
+  // Roles that can ONLY see the Gantt tab (no other tabs)
+  const isGanttOnlyRole = isProjektUser;
   // 24-hour rule: Regular users can only edit data in the future or within the last 24 hours.
   // Teamleads can always make corrections to old data.
   const isDateEditable = useCallback((dateStr) => {
@@ -3914,7 +3919,8 @@ const SAPBasisPlanner = () => {
           </div>
         </div>
         
-{/* Tab Navigation */}
+{/* Tab Navigation — hidden for Gantt-only roles */}
+        {!isGanttOnlyRole && (
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setActiveTab('gantt')}
@@ -3981,13 +3987,15 @@ const SAPBasisPlanner = () => {
             </button>
           )}
         </div>
+        )}
 
         {/* Gantt Chart */}
         <div style={{ display: activeTab === 'gantt' ? 'block' : 'none' }}>
           {renderGanttChart()}
         </div>
 
-        {/* Data Entry Section */}
+        {/* Data Entry Section — hidden for Gantt-only roles */}
+        {!isGanttOnlyRole && (
         <div className="bg-white rounded-lg shadow-lg p-4 md:p-6" style={{ display: activeTab === 'gantt' ? 'block' : 'none' }}>
           <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
             <div className="flex items-center gap-4">
@@ -4537,6 +4545,7 @@ const SAPBasisPlanner = () => {
             );
           })}
         </div >
+        )}
       </div >
 
       {/* Team-Auslastung Tab */}
@@ -5172,6 +5181,7 @@ const SAPBasisPlanner = () => {
                           {user.role === 'teamlead' && <option value="admin">Administrator</option>}
                           {user.role === 'teamlead' && <option value="teamlead">Teamleiter</option>}
                           {user.role === 'teamlead' && <option value="viewer">Viewer (Nur Gantt)</option>}
+                          {user.role === 'teamlead' && <option value="projekt">Projekt (Nur Projekt-Gantt)</option>}
                         </select>
                       </div>
                       <div className="w-20">

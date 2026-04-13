@@ -272,7 +272,7 @@ const initDatabase = () => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer')) NOT NULL DEFAULT 'user',
+      role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer', 'projekt')) NOT NULL DEFAULT 'user',
       must_change_password BOOLEAN DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -766,7 +766,7 @@ const initDatabase = () => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer')) NOT NULL DEFAULT 'user',
+            role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer', 'projekt')) NOT NULL DEFAULT 'user',
             must_change_password BOOLEAN DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             created_by INTEGER,
@@ -785,6 +785,45 @@ const initDatabase = () => {
     }
   } catch (e) {
     console.error('Viewer role migration failed:', e);
+    try { db.pragma('legacy_alter_table = OFF'); } catch (err) { }
+    try { db.pragma('foreign_keys = ON'); } catch (err) { }
+  }
+
+  // Migration: Update users table to allow 'projekt' role
+  try {
+    const tableDef3 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+    if (tableDef3 && !tableDef3.sql.includes('projekt')) {
+      console.log('Migrating users table to include projekt role...');
+      db.pragma('foreign_keys = OFF');
+      db.pragma('legacy_alter_table = ON');
+      db.transaction(() => {
+        const cols = db.pragma('table_info(users)').map(c => c.name);
+        const colList = cols.join(', ');
+        db.exec("ALTER TABLE users RENAME TO users_old3");
+        db.exec(`
+          CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT CHECK(role IN ('admin', 'user', 'teamlead', 'viewer', 'projekt')) NOT NULL DEFAULT 'user',
+            must_change_password BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_by INTEGER,
+            dark_mode BOOLEAN DEFAULT 0,
+            first_name TEXT DEFAULT '',
+            last_name TEXT DEFAULT '',
+            abbreviation TEXT
+          )
+        `);
+        db.exec(`INSERT INTO users (${colList}) SELECT ${colList} FROM users_old3`);
+        db.exec("DROP TABLE users_old3");
+      })();
+      db.pragma('legacy_alter_table = OFF');
+      db.pragma('foreign_keys = ON');
+      console.log('✓ Users table migrated to include projekt role');
+    }
+  } catch (e) {
+    console.error('Projekt role migration failed:', e);
     try { db.pragma('legacy_alter_table = OFF'); } catch (err) { }
     try { db.pragma('foreign_keys = ON'); } catch (err) { }
   }
@@ -1017,6 +1056,14 @@ const requireAdmin = (req, res, next) => {
 const requireTeamLead = (req, res, next) => {
   if (req.user.role !== 'teamlead') {
     return res.status(403).json({ error: 'Nur für Teamleiter erlaubt' });
+  }
+  next();
+};
+
+// Block write operations for read-only roles (viewer, projekt)
+const requireWriteAccess = (req, res, next) => {
+  if (req.user.role === 'viewer' || req.user.role === 'projekt') {
+    return res.status(403).json({ error: 'Keine Schreibberechtigung für diese Rolle' });
   }
   next();
 };
@@ -1349,7 +1396,12 @@ app.delete('/api/sids/:id/lock', authenticate, (req, res) => {
 
 app.get('/api/landscapes', authenticate, (req, res) => {
   cleanupLocks();
-  const landscapes = db.prepare('SELECT * FROM landscapes ORDER BY sort_order').all();
+  let landscapes = db.prepare('SELECT * FROM landscapes ORDER BY sort_order').all();
+
+  // Projekt role: only show landscapes with '(Projekt)' in the name
+  if (req.user.role === 'projekt') {
+    landscapes = landscapes.filter(l => l.name && l.name.includes('(Projekt)'));
+  }
   
   // Pre-fetch all SID locks mapped by sid_id
   const allSidLocks = db.prepare('SELECT sid_id, user_id, username, abbreviation, expires_at FROM sid_locks').all();
@@ -3307,7 +3359,7 @@ app.get('/api/bereitschaft', authenticate, (req, res) => {
 });
 
 // Claim Bereitschaft Week
-app.post('/api/bereitschaft', authenticate, (req, res) => {
+app.post('/api/bereitschaft', authenticate, requireWriteAccess, (req, res) => {
   try {
     const { week_start } = req.body;
     if (!week_start) return res.status(400).json({ error: 'week_start is required' });
@@ -3332,7 +3384,7 @@ app.post('/api/bereitschaft', authenticate, (req, res) => {
 });
 
 // Delete Bereitschaft Claim
-app.delete('/api/bereitschaft/:week_start', authenticate, (req, res) => {
+app.delete('/api/bereitschaft/:week_start', authenticate, requireWriteAccess, (req, res) => {
   try {
     const { week_start } = req.params;
 
@@ -3379,7 +3431,7 @@ app.get('/api/urlaub', authenticate, (req, res) => {
 });
 
 // Create vacation entry
-app.post('/api/urlaub', authenticate, (req, res) => {
+app.post('/api/urlaub', authenticate, requireWriteAccess, (req, res) => {
   try {
     if (req.user.role === 'viewer') {
       return res.status(403).json({ error: 'Kein Zugriff für Viewer' });
@@ -3435,7 +3487,7 @@ app.post('/api/urlaub', authenticate, (req, res) => {
 });
 
 // Delete vacation entry
-app.delete('/api/urlaub/:id', authenticate, (req, res) => {
+app.delete('/api/urlaub/:id', authenticate, requireWriteAccess, (req, res) => {
   try {
     if (req.user.role === 'viewer') {
       return res.status(403).json({ error: 'Kein Zugriff für Viewer' });
