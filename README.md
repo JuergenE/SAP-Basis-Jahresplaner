@@ -1,6 +1,6 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.2.0** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer) und bietet eine REST-API für die Verwaltung von Planungsdaten.
+Version **0.2.3** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer / Projekt) und bietet eine REST-API für die Verwaltung von Planungsdaten.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
@@ -84,12 +84,15 @@ Planung mit DB/
 
 ## Neue Features (v0.2.0)
 
-* **Viewer-Rolle:** Neue Nur-Lese-Rolle für den Gantt-Chart (mit Sichtbarkeits-Toggles).
-* **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
+* **Neue Rolle "Projekt":** Spezielle Rolle für externe Projektbeteiligte. Diese sehen nur Systemlandschaften, die im Namen den Zusatz `(Projekt)` enthalten. Zudem ist der CSV-Export auf die reine Gantt-Ansicht beschränkt.
+* **Viewer-Rolle:** Nur-Lese-Rolle für den Gantt-Chart (mit Sichtbarkeits-Toggles).
+* **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* und *Projekt-User* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
+* **Urlaubsplanung:** Integriertes Modul zur Erfassung und Anzeige von Urlaubszeiten der Teammitglieder.
+* **Bereitschaftsplanung:** Tab zur Verwaltung der wöchentlichen Bereitschaften.
+* **Auswertung:** (Teamlead) Statistisches Modul zur Analyse der Team-Auslastung und Aktivitäten.
+* **Skills-Export:** CSV-Export für Skills-Matrix und Schulungen.
 * **Kürzel-Generierung:** Das Kürzel für Teammitglieder (3 Buchstaben) wird bei der Benutzeranlage automatisch aus Vor- und Nachname generiert.
 * **Persistenter Login:** Sitzungen werden nun beim Neuladen des Browsers durch `HttpOnly`-Cookies automatisch wiederhergestellt.
-* **Skills-Export:** CSV-Export für Skills-Matrix und Schulungen.
-* **Smart CSV-Export Dropdown:** Rollenbasierter CSV Export Header-Button.
 * **Verbessertes Backup/Restore:** Backup-Funktionen für den Teamlead zentral im Header.
 
 ### 👥 Online Users Anzeige
@@ -137,6 +140,18 @@ Verhindert Datenverlust durch gleichzeitige Bearbeitung:
 - Wenn ein Benutzer eine Systemlandschaft bearbeitet, wird diese für 5 Minuten für andere Benutzer gesperrt (Read-only Modus).
 - Der Name des sperrenden Benutzers und die Restlaufzeit werden in Echtzeit angezeigt.
 - Sperren werden beim Speichern, Abbrechen oder Navigieren automatisch freigegeben.
+
+### ⏱️ Teiltagesaktivitäten (Sub-Day Periods)
+
+Aktivitäten und Sub-Aktivitäten können eine Dauer von **0 Tagen** haben, um Zeitfenster innerhalb eines einzigen Tages abzubilden (z.B. für geplante Wartungsfenster von 08:00 – 12:00 Uhr).
+- Bei einer Dauer von 0 erscheinen automatisch Von/Bis-Zeitfelder.
+- Diese Zeiten werden im Gantt-Tooltip und im CSV-Export mit ausgegeben.
+
+### 🧹 Auto-Archiver
+
+Ein Hintergrundprozess aktualisiert regelmäßig den Status von Aktivitäten:
+- **PLANNED → COMPLETED:** Erfolgt automatisch 24 Stunden nach dem Enddatum der Aktivität.
+- **COMPLETED → ARCHIVED:** Erfolgt automatisch 7 Tage nach Abschluss. Archivierte Aktivitäten werden im Gantt-Chart ausgegraut und transparent dargestellt.
 
 ### 🛡️ Security Audit (Feb 2026)
 
@@ -318,25 +333,22 @@ Für **öffentlich erreichbare** Installationen mit gültigem SSL-Zertifikat. Er
 
 ### Benutzerrollen
 
-| Feature | Teamlead (Superuser) | Admin | User | Viewer |
-|---|---|---|---|---|
-| **Daten anzeigen** | ✅ | ✅ | ✅ | ✅ |
-| **SIDs auf-/zuklappen** | ✅ | ✅ | ✅ | ✅ |
-| **Dark Mode** | ✅ | ✅ | ✅ | ✅ |
-| **Gantt-Sichtbarkeit (pro User)** | ✅ | ✅ | ✅ | ✅ |
-| **CSV Export** | ✅ | ✅ | ✅ | ✅ |
-| **Landschaften verwalten** | ✅ | ✅ | ❌ | ❌ |
-| **SIDs verwalten** | ✅ | ✅ | ❌ | ❌ |
-| **Aktivitäten verwalten** | ✅ | ✅ | ❌ | ❌ |
-| **Team-Zuordnung** | ✅ | ✅ | ❌ | ❌ |
-| **Einstellungen** | ✅ | ✅ | ❌ | ❌ |
-| **JSON Import/Export** | ✅ | ✅ | ❌ | ❌ |
-| **Backup / Restore** | ✅ | ✅ | ❌ | ❌ |
-| **Team Management Tab** | ✅ | ✅ | ❌ | ❌ |
-| **Benutzer erstellen** | ✅ Admin, User, Viewer | ✅ User, Viewer | ❌ | ❌ |
-| **Benutzer löschen** | ✅ Admin, User, Viewer | ✅ User, Viewer | ❌ | ❌ |
+| Feature | Teamlead (Super) | Admin | User | Viewer | Projekt |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Gantt-Ansicht** | ✅ | ✅ | ✅ | ✅ | ✅ (nur Projekt-SIDs) |
+| **Gantt-Sichtbarkeit (pro User)** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Dark Mode** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **CSV Export (Gantt)** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **CSV Export (Matrix/Team)** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Landschaften/SIDs verwalten** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Aktivitäten verwalten** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Bereitschaftsplanung** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Urlaubsplanung** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Auswertung (Statistik)** | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Backup / Restore** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **Benutzerverwaltung** | ✅ Admin, User, View, Proj | ✅ User, View, Proj | ❌ | ❌ | ❌ |
 
-> **Note:** Teamlead cannot be deleted. There must always be at least one Teamlead.
+> **Hinweis:** Der Teamlead-Account ist geschützt und kann nicht gelöscht werden. Es muss immer mindestens einen Teamleiter geben.
 
 ### Initialer Login
 *   **User:** `teamlead` (Superuser, created on fresh install)
@@ -420,21 +432,22 @@ pm2 logs sap-planner
 |--------|----------|--------------|
 | **Auth** | | |
 | POST | `/api/auth/login` | Login |
+| POST | `/api/auth/logout` | Logout |
 | GET | `/api/auth/me` | Aktueller User Info |
 | PUT | `/api/auth/dark-mode` | Dark Mode Einstellung speichern |
 | **Settings** | | |
 | GET | `/api/settings` | Einstellungen lesen |
 | PUT | `/api/settings` | Einstellungen schreiben (Admin) |
-| **Data** | | |
-| GET | `/api/landscapes` | Lädt alle Daten (Landschaften, SIDs, Aktivitäten) |
+| **Planung** | | |
+| GET | `/api/landscapes` | Hauptdaten (Landschaften, SIDs, Aktivitäten) |
 | PATCH | `/api/sids/:id/visibility` | Gantt-Sichtbarkeit pro User setzen |
-| POST | `/api/activities` | Neue Aktivität (Admin) |
-| POST | `/api/import/json` | Import von Legacy JSON-Daten (Admin) |
-| **Backup** | | |
-| GET | `/api/backup/export` | Vollständiger Daten-Export als JSON (Admin) |
-| POST | `/api/backup/import` | Daten-Import aus JSON-Backup (Admin) |
-| **System** | | |
-| GET | `/api/health` | Health-Check Endpoint (für Docker/Portainer) |
+| GET | `/api/urlaub` | Urlaubszeiten abrufen |
+| GET | `/api/bereitschaft` | Bereitschaften abrufen |
+| GET | `/api/matrix` | Skills-Matrix abrufen |
+| **Wartung** | | |
+| GET | `/api/backup/export` | Vollständiger DB-Export als JSON (Teamlead) |
+| POST | `/api/backup/import` | DB-Import aus JSON (Teamlead) |
+| GET | `/api/health` | Health-Check (Docker/Monitoring) |
 
 (Vollständige API-Liste siehe Quellcode `server.js`)
 
@@ -448,7 +461,7 @@ pm2 logs sap-planner
 | **Login fehlgeschlagen** | Benutzername/Passwort prüfen. Server erreichbar? |
 | **"Unexpected token" Fehler** | Server neu starten, falls Code geändert wurde (`pm2 restart`). |
 | **Server startet nicht (Port belegt)** | Prüfen mit `lsof -i :3232` und Prozess beenden oder Port in `server.js` ändern. |
-| **Datenbank gesperrt** | SQLite erlaubt nur einen Schreiber gleichzeitig. Warten und erneut versuchen. |
+| **Datenbank gesperrt / Timeout** | In Umgebungen mit vielen gleichzeitigen Änderungen kann es zu Timeouts kommen. In der `server.js` können die Parameter `apiLimiter` (max Requests) und der DB-`timeout` angepasst werden. |
 | **Passwort vergessen** | Nutzen Sie `node manage-users.js`, um einen neuen Admin-User anzulegen oder das Passwort direkt in der DB zurückzusetzen (Backup!). |
 
 ---
