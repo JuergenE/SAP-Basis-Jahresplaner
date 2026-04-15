@@ -1779,6 +1779,7 @@ const SAPBasisPlanner = () => {
   const [bView, setBView] = useState('annual');
   const [bMonthIdx, setBMonthIdx] = useState(1);
   const [bPendingDelete, setBPendingDelete] = useState(null); // mondayISO of week pending deletion
+  const [bYearOverride, setBYearOverride] = useState(null); // session-only year override for Bereitschaft
 
   // Urlaub (Vacation)
   const [urlaub, setUrlaub] = useState([]);
@@ -1787,6 +1788,7 @@ const SAPBasisPlanner = () => {
   const [urlaubModalStart, setUrlaubModalStart] = useState('');
   const [urlaubModalEnd, setUrlaubModalEnd] = useState('');
   const [urlaubModalUserId, setUrlaubModalUserId] = useState('');
+  const [uYearOverride, setUYearOverride] = useState(null); // session-only year override for Urlaubsplanung
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -6143,10 +6145,13 @@ const SAPBasisPlanner = () => {
       bereitschaftMap[b.week_start] = b;
     });
 
-    // Build months for the 3-year range: Dec(year-2) ... Jan(year+2) = 38 months
+    // Effective year for this tab (session-only override or global year)
+    const effectiveYear = bYearOverride ?? year;
+
+    // Build months for the 14-month range: Dec(effectiveYear-1) ... Jan(effectiveYear+1)
     const months = [];
-    for (let m = -13; m <= 24; m++) {
-      const d = new Date(year, m, 1);
+    for (let m = -1; m <= 12; m++) {
+      const d = new Date(effectiveYear, m, 1);
       months.push({
         year: d.getFullYear(),
         month: d.getMonth()
@@ -6275,9 +6280,35 @@ const SAPBasisPlanner = () => {
       className: "bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("h2", {
       className: "text-2xl font-bold text-gray-800"
-    }, "\uD83D\uDD14 Bereitschaftskalender ", year - 1, "\u2013", year + 1), /*#__PURE__*/React.createElement("div", {
+    }, "\uD83D\uDD14 Bereitschaftskalender"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-1"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        const ny = effectiveYear - 1;
+        if (ny >= 2020) {
+          setBYearOverride(ny);
+          setBMonthIdx(1);
+        }
+      },
+      className: "px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40",
+      disabled: effectiveYear <= 2020
+    }, "\u25C4"), /*#__PURE__*/React.createElement("span", {
+      className: "text-lg font-bold text-blue-700 min-w-[4rem] text-center"
+    }, effectiveYear), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        const ny = effectiveYear + 1;
+        if (ny <= 2036) {
+          setBYearOverride(ny);
+          setBMonthIdx(1);
+        }
+      },
+      className: "px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40",
+      disabled: effectiveYear >= 2036
+    }, "\u25BA"))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex gap-3 text-xs items-center"
@@ -6322,13 +6353,13 @@ const SAPBasisPlanner = () => {
       className: "flex items-center justify-between mb-4"
     }, /*#__PURE__*/React.createElement("button", {
       onClick: () => setBMonthIdx(i => Math.max(0, i - 1)),
-      disabled: bMonthIdx === 0,
+      disabled: bMonthIdx <= 0,
       className: "px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40 font-bold"
     }, "\u2039"), /*#__PURE__*/React.createElement("span", {
       className: "font-bold text-xl text-gray-700"
     }, MONTH_NAMES[months[bMonthIdx].month], " ", months[bMonthIdx].year), /*#__PURE__*/React.createElement("button", {
       onClick: () => setBMonthIdx(i => Math.min(months.length - 1, i + 1)),
-      disabled: bMonthIdx === months.length - 1,
+      disabled: bMonthIdx >= months.length - 1,
       className: "px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40 font-bold"
     }, "\u203A")), /*#__PURE__*/React.createElement("div", {
       className: "flex flex-wrap gap-1.5 mb-6"
@@ -6434,10 +6465,13 @@ const SAPBasisPlanner = () => {
       }
     });
 
-    // Build months for the 3-year range: Dec(year-2) ... Jan(year+2) = 38 months
+    // Effective year for this tab (session-only override or global year)
+    const effectiveYear = uYearOverride ?? year;
+
+    // Build months for the 14-month range: Dec(effectiveYear-1) ... Jan(effectiveYear+1)
     const months = [];
-    for (let m = -13; m <= 24; m++) {
-      const d = new Date(year, m, 1);
+    for (let m = -1; m <= 12; m++) {
+      const d = new Date(effectiveYear, m, 1);
       months.push({
         year: d.getFullYear(),
         month: d.getMonth()
@@ -6599,9 +6633,29 @@ const SAPBasisPlanner = () => {
       className: "bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("h2", {
       className: "text-2xl font-bold text-gray-800"
-    }, "\uD83C\uDFD6\uFE0F Urlaubsplanung ", year - 1, "\u2013", year + 1), /*#__PURE__*/React.createElement("div", {
+    }, "\uD83C\uDFD6\uFE0F Urlaubsplanung"), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-1"
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        const ny = effectiveYear - 1;
+        if (ny >= 2020) setUYearOverride(ny);
+      },
+      className: "px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40",
+      disabled: effectiveYear <= 2020
+    }, "\u25C4"), /*#__PURE__*/React.createElement("span", {
+      className: "text-lg font-bold text-blue-700 min-w-[4rem] text-center"
+    }, effectiveYear), /*#__PURE__*/React.createElement("button", {
+      onClick: () => {
+        const ny = effectiveYear + 1;
+        if (ny <= 2036) setUYearOverride(ny);
+      },
+      className: "px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40",
+      disabled: effectiveYear >= 2036
+    }, "\u25BA"))), /*#__PURE__*/React.createElement("div", {
       className: "flex items-center gap-3"
     }, /*#__PURE__*/React.createElement("div", {
       className: "flex gap-2 text-xs items-center flex-wrap"

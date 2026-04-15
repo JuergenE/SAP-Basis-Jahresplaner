@@ -1175,6 +1175,7 @@ const SAPBasisPlanner = () => {
   const [bView, setBView] = useState('annual');
   const [bMonthIdx, setBMonthIdx] = useState(1);
   const [bPendingDelete, setBPendingDelete] = useState(null); // mondayISO of week pending deletion
+  const [bYearOverride, setBYearOverride] = useState(null); // session-only year override for Bereitschaft
 
   // Urlaub (Vacation)
   const [urlaub, setUrlaub] = useState([]);
@@ -1183,6 +1184,7 @@ const SAPBasisPlanner = () => {
   const [urlaubModalStart, setUrlaubModalStart] = useState('');
   const [urlaubModalEnd, setUrlaubModalEnd] = useState('');
   const [urlaubModalUserId, setUrlaubModalUserId] = useState('');
+  const [uYearOverride, setUYearOverride] = useState(null); // session-only year override for Urlaubsplanung
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -5785,10 +5787,13 @@ const SAPBasisPlanner = () => {
           const bereitschaftMap = {};
           bereitschaft.forEach(b => { bereitschaftMap[b.week_start] = b; });
 
-          // Build months for the 3-year range: Dec(year-2) ... Jan(year+2) = 38 months
+          // Effective year for this tab (session-only override or global year)
+          const effectiveYear = bYearOverride ?? year;
+
+          // Build months for the 14-month range: Dec(effectiveYear-1) ... Jan(effectiveYear+1)
           const months = [];
-          for (let m = -13; m <= 24; m++) {
-            const d = new Date(year, m, 1);
+          for (let m = -1; m <= 12; m++) {
+            const d = new Date(effectiveYear, m, 1);
             months.push({ year: d.getFullYear(), month: d.getMonth() });
           }
 
@@ -5923,7 +5928,22 @@ const SAPBasisPlanner = () => {
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme">
               {/* Header */}
               <div className="flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2">
-                <h2 className="text-2xl font-bold text-gray-800">🔔 Bereitschaftskalender {year - 1}–{year + 1}</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-bold text-gray-800">🔔 Bereitschaftskalender</h2>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => { const ny = effectiveYear - 1; if (ny >= 2020) { setBYearOverride(ny); setBMonthIdx(1); } }}
+                      className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40"
+                      disabled={effectiveYear <= 2020}
+                    >◄</button>
+                    <span className="text-lg font-bold text-blue-700 min-w-[4rem] text-center">{effectiveYear}</span>
+                    <button
+                      onClick={() => { const ny = effectiveYear + 1; if (ny <= 2036) { setBYearOverride(ny); setBMonthIdx(1); } }}
+                      className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40"
+                      disabled={effectiveYear >= 2036}
+                    >►</button>
+                  </div>
+                </div>
                 <div className="flex items-center gap-3">
                   {/* Legend */}
                   <div className="flex gap-3 text-xs items-center">
@@ -5978,7 +5998,7 @@ const SAPBasisPlanner = () => {
                   <div className="flex items-center justify-between mb-4">
                     <button
                       onClick={() => setBMonthIdx(i => Math.max(0, i - 1))}
-                      disabled={bMonthIdx === 0}
+                      disabled={bMonthIdx <= 0}
                       className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40 font-bold"
                     >
                       ‹
@@ -5988,7 +6008,7 @@ const SAPBasisPlanner = () => {
                     </span>
                     <button
                       onClick={() => setBMonthIdx(i => Math.min(months.length - 1, i + 1))}
-                      disabled={bMonthIdx === months.length - 1}
+                      disabled={bMonthIdx >= months.length - 1}
                       className="px-3 py-2 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-40 font-bold"
                     >
                       ›
@@ -6138,10 +6158,13 @@ const SAPBasisPlanner = () => {
             }
           });
 
-          // Build months for the 3-year range: Dec(year-2) ... Jan(year+2) = 38 months
+          // Effective year for this tab (session-only override or global year)
+          const effectiveYear = uYearOverride ?? year;
+
+          // Build months for the 14-month range: Dec(effectiveYear-1) ... Jan(effectiveYear+1)
           const months = [];
-          for (let m = -13; m <= 24; m++) {
-            const d = new Date(year, m, 1);
+          for (let m = -1; m <= 12; m++) {
+            const d = new Date(effectiveYear, m, 1);
             months.push({ year: d.getFullYear(), month: d.getMonth() });
           }
 
@@ -6277,7 +6300,22 @@ const SAPBasisPlanner = () => {
           return (
             <div className="bg-white rounded-lg shadow-lg p-6 mb-6 max-w-7xl mx-auto block-theme">
               <div className="flex justify-between items-center mb-4 border-b pb-4 flex-wrap gap-2">
-                <h2 className="text-2xl font-bold text-gray-800">🏖️ Urlaubsplanung {year - 1}–{year + 1}</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-2xl font-bold text-gray-800">🏖️ Urlaubsplanung</h2>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => { const ny = effectiveYear - 1; if (ny >= 2020) setUYearOverride(ny); }}
+                      className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40"
+                      disabled={effectiveYear <= 2020}
+                    >◄</button>
+                    <span className="text-lg font-bold text-blue-700 min-w-[4rem] text-center">{effectiveYear}</span>
+                    <button
+                      onClick={() => { const ny = effectiveYear + 1; if (ny <= 2036) setUYearOverride(ny); }}
+                      className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 text-sm font-bold disabled:opacity-40"
+                      disabled={effectiveYear >= 2036}
+                    >►</button>
+                  </div>
+                </div>
                 <div className="flex items-center gap-3">
                   <div className="flex gap-2 text-xs items-center flex-wrap">
                     {allUserIds.map(uid => {

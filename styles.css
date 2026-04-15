@@ -670,6 +670,9 @@
   .min-w-48 {
     min-width: calc(var(--spacing) * 48);
   }
+  .min-w-\[4rem\] {
+    min-width: 4rem;
+  }
   .min-w-\[32px\] {
     min-width: 32px;
   }
