@@ -66,7 +66,7 @@ app.use(helmet({
 // Rate Limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 800, // Limit each IP to 800 requests per windowMs
+  max: 3000, // Limit each IP to 800 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zu viele Anfragen. Bitte versuchen Sie es später erneut.' }
@@ -75,7 +75,7 @@ app.use('/api/', apiLimiter);
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30, // 30 login attempts per 15 min
+  max: 90, // 30 login attempts per 15 min
   message: { error: 'Zu viele Anmeldeversuche. Bitte versuchen Sie es in 15 Minuten erneut.' }
 });
 app.use('/api/auth/login', loginLimiter);
@@ -107,7 +107,8 @@ app.get('/:filename', (req, res, next) => {
 
 // Use DB_PATH env var if set, otherwise default to local or /app/data based on NODE_ENV
 const dbPath = process.env.DB_PATH || path.join(defaultDataDir, 'sap-planner.db');
-const db = new Database(dbPath);
+const db = new Database(dbPath,
+  { timeout: 15000 });
 
 // Enable WAL mode for better concurrent access
 db.pragma('journal_mode = WAL');
@@ -919,7 +920,7 @@ const autoUpdateActivityStatuses = () => {
     const archivedStr = archivedThresholdDate.toISOString().split('T')[0];
 
     // Use stored end_date for accurate working-day-aware comparisons
-    
+
     // 1. Move PLANNED to COMPLETED (end_date has passed)
     const stmtCompleted = db.prepare(`
       UPDATE activities 
@@ -1180,11 +1181,11 @@ app.get('/api/users/online', authenticate, (req, res) => {
     if (now - data.lastSeen > 60000) { // 60 seconds timeout
       activeUsers.delete(userId);
     } else {
-      activeList.push({ 
-        id: data.id, 
-        abbreviation: data.abbreviation, 
+      activeList.push({
+        id: data.id,
+        abbreviation: data.abbreviation,
         username: data.username,
-        activeSidId: data.activeSidId 
+        activeSidId: data.activeSidId
       });
     }
   }
@@ -1363,7 +1364,7 @@ app.post('/api/sids/:id/lock', authenticate, (req, res) => {
   try {
     const userRecord = db.prepare('SELECT abbreviation FROM users WHERE id = ?').get(req.user.id);
     if (userRecord && userRecord.abbreviation) abbreviation = userRecord.abbreviation;
-  } catch (e) {}
+  } catch (e) { }
 
   const existingLock = db.prepare('SELECT * FROM sid_locks WHERE sid_id = ?').get(id);
 
@@ -1402,7 +1403,7 @@ app.get('/api/landscapes', authenticate, (req, res) => {
   if (req.user.role === 'projekt') {
     landscapes = landscapes.filter(l => l.name && l.name.includes('(Projekt)'));
   }
-  
+
   // Pre-fetch all SID locks mapped by sid_id
   const allSidLocks = db.prepare('SELECT sid_id, user_id, username, abbreviation, expires_at FROM sid_locks').all();
   const sidLocksMap = {};
@@ -1871,7 +1872,7 @@ app.put('/api/activities/:id/archive', authenticate, requireAdmin, (req, res) =>
   try {
     const activity = db.prepare('SELECT status FROM activities WHERE id = ?').get(id);
     if (!activity) return res.status(404).json({ error: 'Aktivität nicht gefunden' });
-    
+
     db.prepare("UPDATE activities SET status = 'ARCHIVED' WHERE id = ?").run(id);
     logAction(req.user.id, req.user.username, 'ARCHIVE_ACTIVITY', { id });
     res.json({ success: true, message: 'Aktivität erfolgreich archiviert' });
@@ -2087,7 +2088,7 @@ app.put('/api/series/:id/occurrences/:occId/archive', authenticate, requireAdmin
   try {
     const occ = db.prepare('SELECT status FROM series_occurrences WHERE id = ? AND series_id = ?').get(occId, id);
     if (!occ) return res.status(404).json({ error: 'Begebenheit nicht gefunden' });
-    
+
     db.prepare("UPDATE series_occurrences SET status = 'ARCHIVED' WHERE id = ?").run(occId);
     logAction(req.user.id, req.user.username, 'ARCHIVE_OCCURRENCE', { occId, seriesId: id });
     res.json({ success: true, message: 'Termin erfolgreich archiviert' });
@@ -2312,7 +2313,7 @@ app.put('/api/sub-activities/:id/archive', authenticate, requireAdmin, (req, res
   try {
     const subActivity = db.prepare('SELECT status FROM sub_activities WHERE id = ?').get(id);
     if (!subActivity) return res.status(404).json({ error: 'Sub-Aktivität nicht gefunden' });
-    
+
     db.prepare("UPDATE sub_activities SET status = 'ARCHIVED' WHERE id = ?").run(id);
     logAction(req.user.id, req.user.username, 'ARCHIVE_SUBACTIVITY', { id });
     res.json({ success: true, message: 'Sub-Aktivität erfolgreich archiviert' });
