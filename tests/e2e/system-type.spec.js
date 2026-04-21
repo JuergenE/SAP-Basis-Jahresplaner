@@ -12,6 +12,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 const BASE_URL = 'http://localhost:3232/sap-planner.html';
+const API_URL  = 'http://localhost:3232';
 const TEST_USER = process.env.TEST_USER || process.env.user || 'teamlead';
 const TEST_PASS = process.env.TEST_PASS || process.env.password;
 
@@ -34,6 +35,40 @@ async function login(page) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// API helper: create test data (landscape + SID) via REST API
+// ─────────────────────────────────────────────────────────────
+async function seedTestData(request) {
+  // Log in via API to get a session cookie
+  const loginRes = await request.post(`${API_URL}/api/auth/login`, {
+    data: { username: TEST_USER, password: TEST_PASS }
+  });
+  if (!loginRes.ok()) return null;
+
+  // Create a test landscape
+  const landRes = await request.post(`${API_URL}/api/landscapes`, {
+    data: { name: 'CI Test Landscape' }
+  });
+  if (!landRes.ok()) return null;
+  const landscape = await landRes.json();
+
+  // Create a SID with PRD type so a badge will appear
+  const sidRes = await request.post(`${API_URL}/api/sids`, {
+    data: { landscape_id: landscape.id, name: 'CIP', systemType: 'PRD' }
+  });
+  if (!sidRes.ok()) return null;
+
+  return { landscapeId: landscape.id };
+}
+
+// ─────────────────────────────────────────────────────────────
+// API helper: clean up test data
+// ─────────────────────────────────────────────────────────────
+async function cleanupTestData(request, landscapeId) {
+  if (!landscapeId) return;
+  await request.delete(`${API_URL}/api/landscapes/${landscapeId}`);
+}
+
+// ─────────────────────────────────────────────────────────────
 // Guards
 // ─────────────────────────────────────────────────────────────
 test.skip(!TEST_PASS, '"password" variable not found in .env — set it to run E2E tests');
@@ -43,50 +78,42 @@ test.skip(!TEST_PASS, '"password" variable not found in .env — set it to run E
 // ─────────────────────────────────────────────────────────────
 test.describe('System Type Display', () => {
 
-  test('Gantt sidebar shows system type badges after login', async ({ page }) => {
-    await login(page);
+  test('Gantt sidebar shows system type badges after login', async ({ page, request }) => {
+    // Seed test data so there is at least one SID with a badge
+    const testData = await seedTestData(request);
 
-    // The Gantt-Ansicht is the default view; badges appear in the sidebar
-    // Wait for the Gantt chart container to fully render
-    await expect(page.locator('text=Gantt-Chart')).toBeVisible({ timeout: 10_000 });
+    try {
+      await login(page);
 
-    // Verify that at least one system type badge is rendered in the sidebar
-    // Badges are <span> elements with the system type text (PRD, QAS, DEV, etc.)
-    const badges = page.locator('span').filter({ hasText: /^(PRD|PPRD|QAS|TST|DEV|SBX|TRN)$/ });
-    await expect(badges.first()).toBeVisible({ timeout: 10_000 });
+      // The Gantt-Ansicht is the default view; badges appear in the sidebar
+      await expect(page.locator('text=Gantt-Chart')).toBeVisible({ timeout: 10_000 });
+
+      // Verify that at least one system type badge is rendered in the sidebar
+      const badges = page.locator('span').filter({ hasText: /^(PRD|PPRD|QAS|TST|DEV|SBX|TRN)$/ });
+      await expect(badges.first()).toBeVisible({ timeout: 10_000 });
+    } finally {
+      // Clean up test data regardless of test outcome
+      if (testData) await cleanupTestData(request, testData.landscapeId);
+    }
   });
 
   test('System type dropdown is visible in landscape editor', async ({ page }) => {
     await login(page);
 
-    // Scroll down in the Gantt sidebar to find the Systemlandschaften section
-    // or navigate to the config area via the header
-    // Look for a SID system type dropdown (rendered in the landscape config section)
-    const systemTypeDropdown = page.locator('select').filter({ hasText: /DEV|PRD|QAS|TST/ }).first();
-
-    // This checks the dropdown is rendered somewhere in the page
-    // It may be in the right panel / settings; scroll to make it visible
-    const isVisible = await systemTypeDropdown.isVisible().catch(() => false);
-    if (!isVisible) {
-      // Scroll down to find the landscape editor section
-      await page.mouse.wheel(0, 500);
-    }
-
-    // Verify the dropdown is present in the DOM (even if scrolled out of view)
+    // Look for a select dropdown present in the DOM
     const count = await page.locator('select').count();
     expect(count).toBeGreaterThan(0);
   });
 
   test('API: SID system type persists after update', async ({ request }) => {
-    // Direct API test: no need for browser UI, just verify the backend
     // Log in via API
-    const loginRes = await request.post(`${BASE_URL.replace('/sap-planner.html', '')}/api/auth/login`, {
+    const loginRes = await request.post(`${API_URL}/api/auth/login`, {
       data: { username: TEST_USER, password: TEST_PASS }
     });
     expect(loginRes.ok()).toBeTruthy();
 
     // Fetch landscapes
-    const landscapesRes = await request.get(`${BASE_URL.replace('/sap-planner.html', '')}/api/landscapes`);
+    const landscapesRes = await request.get(`${API_URL}/api/landscapes`);
     expect(landscapesRes.ok()).toBeTruthy();
 
     const landscapes = await landscapesRes.json();
