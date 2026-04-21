@@ -9,7 +9,7 @@ node_modules/
 .env
 checkme.md
 *.csv
-test-*.js
+/test-*.js
 # Debug / temp scripts
 check.js
 check_*.js
