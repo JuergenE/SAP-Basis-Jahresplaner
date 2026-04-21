@@ -908,6 +908,31 @@ initDatabase();
 console.log(`✓ SAP Basis Jahresplaner Backend starting - Version: ${APP_VERSION}`);
 logAction(null, 'SYSTEM', 'STARTUP', { version: APP_VERSION });
 
+// ── CI Test User Bootstrap ──────────────────────────────────────────────
+// When TEST_USER and TEST_PASS environment variables are set (e.g. in CI),
+// ensure the test user exists with must_change_password=0 so E2E tests
+// can log in without being blocked by the password-change modal.
+if (process.env.TEST_USER && process.env.TEST_PASS) {
+  try {
+    const testUser = process.env.TEST_USER;
+    const testPass = process.env.TEST_PASS;
+    const existing = db.prepare('SELECT id, must_change_password FROM users WHERE username = ?').get(testUser);
+    if (existing && existing.must_change_password) {
+      // Clear the must_change_password flag so E2E tests can proceed
+      db.prepare('UPDATE users SET must_change_password = 0 WHERE id = ?').run(existing.id);
+      console.log(`✓ CI: Cleared must_change_password for test user "${testUser}"`);
+    } else if (!existing) {
+      // Create a dedicated CI test user
+      const hash = bcrypt.hashSync(testPass, 10);
+      db.prepare('INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, ?, 0)')
+        .run(testUser, hash, 'admin');
+      console.log(`✓ CI: Created test user "${testUser}" (admin, no password change required)`);
+    }
+  } catch (e) {
+    console.error('⚠ CI test user setup failed:', e.message);
+  }
+}
+
 const autoUpdateActivityStatuses = () => {
   try {
     const COMPLETED_THRESHOLD_HOURS = 24;
