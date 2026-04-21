@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   # ─────────────────────────────────────────────────────────────
   # Job 1: Backend Integration Tests (Jest + Supertest)
@@ -21,10 +18,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 24
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -56,10 +53,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
