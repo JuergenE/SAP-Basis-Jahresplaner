@@ -1,6 +1,6 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.2.3** — Multi-User-fähiges Planungstool mit SQLite-Backend. Die Anwendung ermöglicht es mehreren Benutzern, die gleiche Datenbank von verschiedenen Computern aus zu nutzen, unterstützt rollenbasierten Zugriff (Teamlead / Admin / User / Viewer / Projekt) und bietet eine REST-API für die Verwaltung von Planungsdaten.
+Version **0.2.4** — Hochperformantes Multi-User Planungstool mit SQLite-Backend. Optimiert für hohe Last (50+ gleichzeitige Nutzer), unterstützt rollenbasierten Zugriff, bietet eine REST-API mit Brotli-Kompression und automatischer Sitzungswiederherstellung.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
@@ -87,13 +87,17 @@ Planung mit DB/
 * **Neue Rolle "Projekt":** Spezielle Rolle für externe Projektbeteiligte. Diese sehen nur Systemlandschaften, die im Namen den Zusatz `(Projekt)` enthalten. Zudem ist der CSV-Export auf die reine Gantt-Ansicht beschränkt.
 * **Viewer-Rolle:** Nur-Lese-Rolle für den Gantt-Chart (mit Sichtbarkeits-Toggles).
 * **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* und *Projekt-User* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
-* **Urlaubsplanung:** Integriertes Modul zur Erfassung und Anzeige von Urlaubszeiten der Teammitglieder.
-* **Bereitschaftsplanung:** Tab zur Verwaltung der wöchentlichen Bereitschaften.
+* **Urlaubsplanung:** Integriertes Modul zur Erfassung und Anzeige von Urlaubszeiten. Die Ansicht ist auf einen fokussierten **14-Monats-Viewport** (Dezember des Vorjahres bis Januar des Folgejahres) optimiert und verfügt über einen unabhängigen Jahreswähler.
+* **Bereitschaftsplanung:** Tab zur Verwaltung wöchentlicher Bereitschaften mit eigenem **14-Monats-Viewport**.
+* **Performance-Optimierung (v0.2.4):**
+    * **Async Logging:** Log-Schreibvorgänge blockieren nicht mehr den Server-Thread.
+    * **Kompression:** Brotli/Gzip-Kompression reduziert Payload-Größen um bis zu 90%.
+    * **High-Load Limits:** Erhöhte Rate-Limits (Login: 300/15min, API: 10.000/15min) für reibungslosen Betrieb bei 50-100 simultanen Logins.
 * **Auswertung:** (Teamlead) Statistisches Modul zur Analyse der Team-Auslastung und Aktivitäten.
 * **Skills-Export:** CSV-Export für Skills-Matrix und Schulungen.
 * **Kürzel-Generierung:** Das Kürzel für Teammitglieder (3 Buchstaben) wird bei der Benutzeranlage automatisch aus Vor- und Nachname generiert.
 * **Persistenter Login:** Sitzungen werden nun beim Neuladen des Browsers durch `HttpOnly`-Cookies automatisch wiederhergestellt.
-* **Verbessertes Backup/Restore:** Backup-Funktionen für den Teamlead zentral im Header.
+* **Verbessertes Backup/Restore:** Backup-Funktionen für den Teamlead zentral im Header. (Siehe auch [AutomaticBackupSolution.md](data/AutomaticBackupSolution.md) für externe Backups).
 
 ### 👥 Online Users Anzeige
 In der rechten Bildschirmhälfte wird nun eine dynamische Leiste der aktuell im System aktiven Nutzer (anhand ihres Kürzels) eingeblendet. Die Anzeige aktualisiert sich automatisch alle 30 Sekunden per Heartbeat-Ping.
@@ -126,9 +130,10 @@ Der CSV Gantt Export steht nun **allen Benutzern** zur Verfügung (nicht nur Adm
 - Spalten: Systemlandschaft, SID, PRD, Aktivitätstyp, Sub-Aktivität, Startdatum, Dauer, Enddatum, **Startzeit**, **Endzeit**
 - UTF-8 mit BOM, Semikolon als Trennzeichen (Excel-kompatibel)
 
-### 📅 Jahresbasierte Gantt-Ansicht
+### 📅 Jahresbasierte Ansichten
 
-Die Kalenderwochenansicht basiert jetzt auf dem **gewählten Jahr** statt dem aktuellen Datum. Beim Wechsel des Jahres springt die Ansicht automatisch auf den 1. Januar des neuen Jahres.
+* **Gantt-Chart:** Die Kalenderwochenansicht basiert auf dem gewählten Jahr und zeigt einen 36-Monats-Bereich an.
+* **Bereitschaft & Urlaub:** Diese Tabs nutzen einen kompakten **14-Monats-Viewport** (Dezember bis Januar). Jeder Tab hat einen eigenen, sitzungsbasierten Jahreswähler (`◄ 2026 ►`), der beim Logout automatisch auf das im Header gewählte Jahr zurückspringt. Daten können für jedes gewählte Jahr erfasst und persistent gespeichert werden.
 
 ### 🔧 Wartungssonntag-Zentrierung
 
@@ -164,6 +169,12 @@ Ein umfassendes Sicherheits-Audit wurde durchgeführt. Die Anwendung ist für de
 ### 🔐 Weitere Verbesserungen
 
 *   **SID Nummerierung (1-9):** Systeme (SIDs) innerhalb einer Landschaft werden nun automatisch sequentiell nummeriert. Die Nummerierung beschränkt sich dabei auf die Ziffern 1 bis 9 (z.B., `1. DEV`, `2. QAS`). Diese Reihenfolge wird beim Erstellen neuer oder dem Umbenennen bestehender Systeme validiert und sichergestellt.
+
+### 🧪 Automatisierte CI-Tests (GitHub Actions)
+Jeder Push in den `main` Branch triggert automatisch eine Test-Pipeline:
+- **Backend API Tests:** Validierung der REST-Endpunkte und DB-Sicherheit mit Jest.
+- **E2E Browser Tests:** Simulation von Nutzerinteraktionen mit Playwright.
+Statistiken und Berichte (Artifacts) sind direkt bei den GitHub Actions verfügbar.
 
 ---
 
@@ -461,7 +472,7 @@ pm2 logs sap-planner
 | **Login fehlgeschlagen** | Benutzername/Passwort prüfen. Server erreichbar? |
 | **"Unexpected token" Fehler** | Server neu starten, falls Code geändert wurde (`pm2 restart`). |
 | **Server startet nicht (Port belegt)** | Prüfen mit `lsof -i :3232` und Prozess beenden oder Port in `server.js` ändern. |
-| **Datenbank gesperrt / Timeout** | In Umgebungen mit vielen gleichzeitigen Änderungen kann es zu Timeouts kommen. In der `server.js` können die Parameter `apiLimiter` (max Requests) und der DB-`timeout` angepasst werden. |
+| **Datenbank gesperrt / Timeout** | Seit v0.2.4 ist der Server für 100+ Nutzer optimiert (DB Timeout 30s). Falls dennoch Timeouts auftreten, prüfen Sie die CPU-Last (Bcrypt-Hashing) oder nutzen Sie einen Reverse Proxy (Nginx). |
 | **Passwort vergessen** | Nutzen Sie `node manage-users.js`, um einen neuen Admin-User anzulegen oder das Passwort direkt in der DB zurückzusetzen (Backup!). |
 
 ---
