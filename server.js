@@ -25,6 +25,7 @@ const cors = require('cors');
 const path = require('path');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const compression = require('compression');
 const cookieParser = require('cookie-parser');
 const fs = require('fs');
 
@@ -53,6 +54,7 @@ const LOG_FILE = path.join(defaultDataDir, 'server.log');
 const MAX_LOG_SIZE = 1024 * 1024; // 1MB
 
 app.use(cookieParser());
+app.use(compression()); // Gzip/Brotli compression for all responses
 
 // Security Headers via Helmet
 // HSTS disabled: app is accessed via IP/HTTP in Portainer environments
@@ -66,7 +68,7 @@ app.use(helmet({
 // Rate Limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 3000, // Limit each IP to 800 requests per windowMs
+  max: 10000, // Limit each IP to 10000 requests per windowMs (supports 50+ concurrent users)
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Zu viele Anfragen. Bitte versuchen Sie es später erneut.' }
@@ -75,7 +77,7 @@ app.use('/api/', apiLimiter);
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 90, // 30 login attempts per 15 min
+  max: 300, // 300 login attempts per 15 min (supports offices sharing one IP)
   message: { error: 'Zu viele Anmeldeversuche. Bitte versuchen Sie es in 15 Minuten erneut.' }
 });
 app.use('/api/auth/login', loginLimiter);
@@ -108,7 +110,7 @@ app.get('/:filename', (req, res, next) => {
 // Use DB_PATH env var if set, otherwise default to local or /app/data based on NODE_ENV
 const dbPath = process.env.DB_PATH || path.join(defaultDataDir, 'sap-planner.db');
 const db = new Database(dbPath,
-  { timeout: 15000 });
+  { timeout: 30000 }); // 30s busy timeout for high-concurrency environments
 
 // Enable WAL mode for better concurrent access
 db.pragma('journal_mode = WAL');
@@ -979,11 +981,27 @@ const autoUpdateActivityStatuses = () => {
   }
 };
 
-// Run on boot
+// Periodic session cleanup (moved out of login route to reduce write contention)
+const cleanupExpiredSessions = () => {
+  try {
+    const result = db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+    if (result.changes > 0) {
+      console.log(`✓ Session cleanup: removed ${result.changes} expired session(s).`);
+    }
+  } catch (err) {
+    console.error('Session cleanup error:', err.message);
+  }
+};
+
+// Run maintenance on boot
 autoUpdateActivityStatuses();
+cleanupExpiredSessions();
 // Run every hour (but skip during tests to avoid open handles)
 if (process.env.NODE_ENV !== 'test') {
-  setInterval(autoUpdateActivityStatuses, 60 * 60 * 1000);
+  setInterval(() => {
+    autoUpdateActivityStatuses();
+    cleanupExpiredSessions();
+  }, 60 * 60 * 1000);
 }
 
 // =========================================================================
@@ -991,27 +1009,31 @@ if (process.env.NODE_ENV !== 'test') {
 // =========================================================================
 
 function logAction(userId, username, action, details = null) {
-  try {
-    const timestamp = new Date().toISOString();
-    const logLine = `[${timestamp}] [${username || 'SYSTEM'}] ${action}: ${details ? JSON.stringify(details) : ''}\n`;
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] [${username || 'SYSTEM'}] ${action}: ${details ? JSON.stringify(details) : ''}\n`;
 
-    // Check file size and rotate if needed
-    if (fs.existsSync(LOG_FILE)) {
-      const stats = fs.statSync(LOG_FILE);
-      if (stats.size >= MAX_LOG_SIZE) {
-        // Log rotation: Read file, drop oldest 20%, write back
-        const content = fs.readFileSync(LOG_FILE, 'utf8');
-        const lines = content.split('\n');
-        const splitIndex = Math.floor(lines.length * 0.2);
-        const newContent = lines.slice(splitIndex).join('\n');
-        fs.writeFileSync(LOG_FILE, newContent);
+  // Async logging to avoid blocking the event loop during high concurrency
+  (async () => {
+    try {
+      // Check file size and rotate if needed
+      try {
+        const stats = await fs.promises.stat(LOG_FILE);
+        if (stats.size >= MAX_LOG_SIZE) {
+          const content = await fs.promises.readFile(LOG_FILE, 'utf8');
+          const lines = content.split('\n');
+          const splitIndex = Math.floor(lines.length * 0.2);
+          const newContent = lines.slice(splitIndex).join('\n');
+          await fs.promises.writeFile(LOG_FILE, newContent);
+        }
+      } catch (statErr) {
+        // File doesn't exist yet — that's fine, appendFile will create it
       }
-    }
 
-    fs.appendFileSync(LOG_FILE, logLine);
-  } catch (e) {
-    console.error('Logging error:', e);
-  }
+      await fs.promises.appendFile(LOG_FILE, logLine);
+    } catch (e) {
+      console.error('Logging error:', e);
+    }
+  })();
 }
 
 // =========================================================================
@@ -1098,8 +1120,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     db.prepare('INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)').run(user.id, token, expiresAt);
 
-    // Clean up old sessions
-    db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+    // Session cleanup is handled by the hourly maintenance task (cleanupExpiredSessions)
 
     // Set HttpOnly Cookie
     res.cookie('auth_token', token, {
