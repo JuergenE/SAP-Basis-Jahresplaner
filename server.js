@@ -33,6 +33,11 @@ const app = express();
 const PORT = process.env.PORT || 3232;
 const HOST = process.env.HOST || '0.0.0.0';
 
+// Trust proxy headers (X-Forwarded-For) when running behind a reverse proxy / Kubernetes ingress.
+// Required for express-rate-limit to correctly identify clients by their real IP.
+// Value '1' = trust exactly one proxy hop; set to '2' for chained proxies (e.g. CDN → ingress).
+app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+
 // Online Users Memory Store
 // Maps user_id -> { id, username, abbreviation, lastSeen }
 const activeUsers = new Map();
