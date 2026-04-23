@@ -35,8 +35,12 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // Trust proxy headers (X-Forwarded-For) when running behind a reverse proxy / Kubernetes ingress.
 // Required for express-rate-limit to correctly identify clients by their real IP.
-// Value '1' = trust exactly one proxy hop; set to '2' for chained proxies (e.g. CDN → ingress).
-app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+// Default is 'true' to support multiple internal hops (Service Mesh, sidecars, etc.)
+// Can be overridden via TRUST_PROXY env var (e.g. to a specific number of hops).
+const trustProxyVal = process.env.TRUST_PROXY;
+app.set('trust proxy', trustProxyVal !== undefined
+  ? (isNaN(trustProxyVal) ? (trustProxyVal === 'true' ? true : (trustProxyVal === 'false' ? false : trustProxyVal)) : Number(trustProxyVal))
+  : true);
 
 // Online Users Memory Store
 // Maps user_id -> { id, username, abbreviation, lastSeen }
@@ -76,6 +80,7 @@ const apiLimiter = rateLimit({
   max: 10000, // Limit each IP to 10000 requests per windowMs (supports 50+ concurrent users)
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false }, // Prevent hangs/errors if proxy config is complex
   message: { error: 'Zu viele Anfragen. Bitte versuchen Sie es später erneut.' }
 });
 app.use('/api/', apiLimiter);
@@ -83,6 +88,7 @@ app.use('/api/', apiLimiter);
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300, // 300 login attempts per 15 min (supports offices sharing one IP)
+  validate: { xForwardedForHeader: false },
   message: { error: 'Zu viele Anmeldeversuche. Bitte versuchen Sie es in 15 Minuten erneut.' }
 });
 app.use('/api/auth/login', loginLimiter);
