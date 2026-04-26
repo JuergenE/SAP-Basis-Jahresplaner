@@ -56,6 +56,30 @@ class ApiClient {
   setToken(token) {
     // No-op: Token is set by server via HttpOnly cookie
   }
+
+  // Redact sensitive fields from objects before logging
+  _sanitizeForLog(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    const sanitized = {
+      ...obj
+    };
+    // Redact body for auth endpoints
+    if (sanitized.body) {
+      try {
+        const parsed = JSON.parse(sanitized.body);
+        const sensitiveKeys = ['password', 'currentPassword', 'newPassword', 'password_hash'];
+        let hasSensitive = false;
+        for (const key of sensitiveKeys) {
+          if (key in parsed) {
+            parsed[key] = '***';
+            hasSensitive = true;
+          }
+        }
+        if (hasSensitive) sanitized.body = JSON.stringify(parsed);
+      } catch (e) {/* not JSON, leave as-is */}
+    }
+    return sanitized;
+  }
   async request(endpoint, options = {}) {
     const headers = {
       'Content-Type': 'application/json',
@@ -64,7 +88,7 @@ class ApiClient {
     // Authorization header is no longer needed (cookie is sent automatically)
 
     const url = `${this.baseUrl}${endpoint}`;
-    console.log(`[API] Fetching: ${url}`, options);
+    console.log(`[API] Fetching: ${url}`, this._sanitizeForLog(options));
     try {
       const response = await fetch(url, {
         ...options,
@@ -81,7 +105,7 @@ class ApiClient {
           error: text.length > 150 ? text.substring(0, 150) + '...' : text
         };
       }
-      console.log(`[API] Response from ${endpoint}:`, data);
+      console.log(`[API] Response from ${endpoint}:`, this._sanitizeForLog(data));
       if (response.status === 401) {
         if (!endpoint.includes('/login')) {
           throw new Error('SESSION_EXPIRED');
@@ -1869,7 +1893,16 @@ const SAPBasisPlanner = () => {
   // Load data from API
   const loadData = useCallback(async () => {
     try {
-      const [settings, types, lands, sundays, members, matrix, trns, bereitschaftList, initialUsers, urlaubList] = await Promise.all([api.getSettings(), api.getActivityTypes(), api.getLandscapes(), api.getMaintenanceSundays().catch(() => []), api.getTeamMembers().catch(() => []), api.getMatrix().catch(() => ({
+      const [settings, types, lands, sundays, members, matrix, trns, bereitschaftList, initialUsers, urlaubList] = await Promise.all([api.getSettings().catch(e => {
+        console.error('Settings load failed:', e);
+        return {};
+      }), api.getActivityTypes().catch(e => {
+        console.error('ActivityTypes load failed:', e);
+        return [];
+      }), api.getLandscapes().catch(e => {
+        console.error('Landscapes load failed:', e);
+        return [];
+      }), api.getMaintenanceSundays().catch(() => []), api.getTeamMembers().catch(() => []), api.getMatrix().catch(() => ({
         columns: [],
         values: []
       })), api.getTrainings().catch(() => []), api.getBereitschaft().catch(() => []), api.getUsers().catch(() => []), api.getUrlaub().catch(() => [])]);

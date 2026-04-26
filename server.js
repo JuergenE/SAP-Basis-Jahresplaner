@@ -35,12 +35,9 @@ const HOST = process.env.HOST || '0.0.0.0';
 
 // Trust proxy headers (X-Forwarded-For) when running behind a reverse proxy / Kubernetes ingress.
 // Required for express-rate-limit to correctly identify clients by their real IP.
-// Default is 'true' to support multiple internal hops (Service Mesh, sidecars, etc.)
-// Can be overridden via TRUST_PROXY env var (e.g. to a specific number of hops).
-const trustProxyVal = process.env.TRUST_PROXY;
-app.set('trust proxy', trustProxyVal !== undefined
-  ? (isNaN(trustProxyVal) ? (trustProxyVal === 'true' ? true : (trustProxyVal === 'false' ? false : trustProxyVal)) : Number(trustProxyVal))
-  : true);
+// Default '1' = trust exactly one proxy hop (typical K8s ingress setup).
+// Set TRUST_PROXY env var to adjust: '2' for chained proxies, '0' to disable.
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
 
 // Online Users Memory Store
 // Maps user_id -> { id, username, abbreviation, lastSeen }
@@ -63,7 +60,15 @@ const LOG_FILE = path.join(defaultDataDir, 'server.log');
 const MAX_LOG_SIZE = 1024 * 1024; // 1MB
 
 app.use(cookieParser());
-app.use(compression()); // Gzip/Brotli compression for all responses
+// Gzip/Brotli compression for all responses.
+// Disable via NO_COMPRESSION=1 when behind a proxy that handles compression (e.g. K8s ingress)
+// to prevent double-compression which can corrupt responses and freeze the frontend.
+if (!process.env.NO_COMPRESSION) {
+  app.use(compression());
+  console.log('✓ Response compression enabled');
+} else {
+  console.log('⚠ Response compression disabled (NO_COMPRESSION is set)');
+}
 
 // Security Headers via Helmet
 // HSTS disabled: app is accessed via IP/HTTP in Portainer environments
@@ -80,7 +85,7 @@ const apiLimiter = rateLimit({
   max: 10000, // Limit each IP to 10000 requests per windowMs (supports 50+ concurrent users)
   standardHeaders: true,
   legacyHeaders: false,
-  validate: { xForwardedForHeader: false }, // Prevent hangs/errors if proxy config is complex
+  validate: { trustProxy: false, xForwardedForHeader: false }, // Disable strict proxy validation for K8s environments
   message: { error: 'Zu viele Anfragen. Bitte versuchen Sie es später erneut.' }
 });
 app.use('/api/', apiLimiter);
@@ -88,7 +93,7 @@ app.use('/api/', apiLimiter);
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300, // 300 login attempts per 15 min (supports offices sharing one IP)
-  validate: { xForwardedForHeader: false },
+  validate: { trustProxy: false, xForwardedForHeader: false },
   message: { error: 'Zu viele Anmeldeversuche. Bitte versuchen Sie es in 15 Minuten erneut.' }
 });
 app.use('/api/auth/login', loginLimiter);

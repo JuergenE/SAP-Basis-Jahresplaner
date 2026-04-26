@@ -22,6 +22,8 @@ services:
       - NODE_ENV=production
       - PORT=3232
       - HOST=0.0.0.0
+      - TRUST_PROXY=1              # Number of trusted proxy hops (1 for single reverse proxy)
+      - NO_COMPRESSION=1           # Disable app-level compression (let proxy/ingress handle it)
     healthcheck:
       test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3232/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))" ]
       interval: 30s
