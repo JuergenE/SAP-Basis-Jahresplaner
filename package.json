@@ -1,7 +1,7 @@
 {
-    "name": "sap-basis-planner",
-    "version": "0.2.4",
-    "description": "SAP Basis Jahresplaner mit SQLite-Backend und Multi-User-Support",
+    "name": "sap-basis-jahresplaner",
+    "version": "0.2.5",
+    "description": "A high-performance planning tool for SAP Basis teams.",
     "main": "server.js",
     "engines": {
         "node": ">=20.0.0"

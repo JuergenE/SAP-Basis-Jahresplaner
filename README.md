@@ -1,6 +1,6 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.2.4** — Hochperformantes Multi-User Planungstool mit SQLite-Backend. Optimiert für hohe Last (50+ gleichzeitige Nutzer), unterstützt rollenbasierten Zugriff, bietet eine REST-API mit Brotli-Kompression und automatischer Sitzungswiederherstellung.
+Version **0.2.5** — Hochperformantes Multi-User Planungstool mit SQLite-Backend. Optimiert für hohe Last (50+ gleichzeitige Nutzer), unterstützt rollenbasierten Zugriff, bietet eine REST-API mit Brotli-Kompression und automatischer Sitzungswiederherstellung.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
@@ -89,9 +89,11 @@ Planung mit DB/
 * **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* und *Projekt-User* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
 * **Urlaubsplanung:** Integriertes Modul zur Erfassung und Anzeige von Urlaubszeiten. Die Ansicht ist auf einen fokussierten **14-Monats-Viewport** (Dezember des Vorjahres bis Januar des Folgejahres) optimiert und verfügt über einen unabhängigen Jahreswähler.
 * **Bereitschaftsplanung:** Tab zur Verwaltung wöchentlicher Bereitschaften mit eigenem **14-Monats-Viewport**.
-* **Performance-Optimierung (v0.2.4):**
+* **Bugfixes & Stabilität (v0.2.5):**
+    * **Kubernetes/Proxy Support:** Neue Umgebungsvariablen `TRUST_PROXY=1` und `NO_COMPRESSION=1` verhindern Endlos-Ladeschleifen hinter Ingress-Controllern.
+    * **Robustes Fehlerhandling:** Fehlgeschlagene API-Aufrufe (z.B. durch Proxy-Timeouts) fangen sich sauber ab, ohne die gesamte App einzufrieren. Fehler bei der Urlaubseingabe werden nun inline im Modal angezeigt.
+    * **Sicheres Logging:** Sensible Daten (Passwörter) werden im Frontend-Console-Log automatisch maskiert (`***`).
     * **Async Logging:** Log-Schreibvorgänge blockieren nicht mehr den Server-Thread.
-    * **Kompression:** Brotli/Gzip-Kompression reduziert Payload-Größen um bis zu 90%.
     * **High-Load Limits:** Erhöhte Rate-Limits (Login: 300/15min, API: 10.000/15min) für reibungslosen Betrieb bei 50-100 simultanen Logins.
 * **Auswertung:** (Teamlead) Statistisches Modul zur Analyse der Team-Auslastung und Aktivitäten.
 * **Skills-Export:** CSV-Export für Skills-Matrix und Schulungen.
@@ -233,8 +235,13 @@ Der einfachste Weg, die Anwendung zu starten, ist die Nutzung von Docker.
       -p 3232:3232 \
       -v "$(pwd)/data":/app/data \
       -e DB_PATH=/app/data/sap-planner.db \
+      -e TRUST_PROXY=1 \
+      -e NO_COMPRESSION=1 \
       sap-planner
     ```
+
+    > [!TIP]
+    > **Kubernetes / Reverse Proxy:** Wenn die Anwendung hinter einem Ingress oder Reverse Proxy betrieben wird, sind `TRUST_PROXY=1` und `NO_COMPRESSION=1` entscheidend. Sie verhindern Rate-Limit-Sperren sowie korrupte Daten durch doppelte Komprimierung.
 
     > [!WARNING]
     > **macOS iCloud Users:** Falls Ihr Projekt in `~/Library/Mobile Documents/...` liegt, kann es zu `operation not permitted` Fehlern kommen.
@@ -353,11 +360,13 @@ Für **öffentlich erreichbare** Installationen mit gültigem SSL-Zertifikat. Er
 | **CSV Export (Matrix/Team)** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Landschaften/SIDs verwalten** | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Aktivitäten verwalten** | ✅ | ✅ | ❌ | ❌ | ❌ |
-| **Bereitschaftsplanung** | ✅ | ✅ | ✅ | ❌ | ❌ |
-| **Urlaubsplanung** | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **Bereitschaftsplanung** | ✅ | ✅ | ✅ (Self-Service) | ❌ | ❌ |
+| **Urlaubsplanung** | ✅ | ✅ | ✅ (Self-Service) | ❌ | ❌ |
 | **Auswertung (Statistik)** | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Backup / Restore** | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **Benutzerverwaltung** | ✅ Admin, User, View, Proj | ✅ User, View, Proj | ❌ | ❌ | ❌ |
+
+> **Hinweis (Self-Service):** Normale Benutzer (`User`) können in der Bereitschafts- und Urlaubsplanung Einträge verwalten. Dabei gilt eine **24-Stunden-Regel**: Es können Einträge für die Zukunft oder maximal 24 Stunden rückwirkend getätigt werden. Teamleiter können die 24h-Regel umgehen und Einträge für alle Benutzer verwalten.
 
 > **Hinweis:** Der Teamlead-Account ist geschützt und kann nicht gelöscht werden. Es muss immer mindestens einen Teamleiter geben.
 
@@ -468,6 +477,7 @@ pm2 logs sap-planner
 
 | Problem | Lösung |
 |---------|--------|
+| **App bleibt nach Login bei "Laden..." stehen** | Oft verursacht durch korrupte Daten aufgrund von doppelter Komprimierung hinter einem Ingress/Proxy. Setzen Sie die Umgebungsvariable `NO_COMPRESSION=1` im Deployment. |
 | **Keine Verbindung zum Server** | Firewall prüfen; Läuft der Server (`pm2 status`)?; Stimmt die IP in `sap-planner.html`? |
 | **Login fehlgeschlagen** | Benutzername/Passwort prüfen. Server erreichbar? |
 | **"Unexpected token" Fehler** | Server neu starten, falls Code geändert wurde (`pm2 restart`). |

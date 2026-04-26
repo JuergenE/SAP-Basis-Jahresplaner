@@ -601,7 +601,7 @@ class ApiClient {
   }
 }
 const api = new ApiClient();
-const APP_VERSION_FALLBACK = '0.2.4';
+const APP_VERSION_FALLBACK = '0.2.5';
 const bundeslaender = [{
   id: 'BW',
   name: 'Baden-Württemberg'
@@ -1812,6 +1812,7 @@ const SAPBasisPlanner = () => {
   const [urlaubModalStart, setUrlaubModalStart] = useState('');
   const [urlaubModalEnd, setUrlaubModalEnd] = useState('');
   const [urlaubModalUserId, setUrlaubModalUserId] = useState('');
+  const [urlaubModalError, setUrlaubModalError] = useState('');
   const [uYearOverride, setUYearOverride] = useState(null); // session-only year override for Urlaubsplanung
   const [showCsvDropdown, setShowCsvDropdown] = useState(false);
   const [showDataDropdown, setShowDataDropdown] = useState(false);
@@ -1890,6 +1891,20 @@ const SAPBasisPlanner = () => {
     cutoff.setHours(cutoff.getHours() - 24); // 24 hours ago
     return targetDate >= cutoff; // Editable if within 24 hours or in the future
   }, [canEdit, user?.role]);
+
+  // Self-service date check for Bereitschaft & Urlaub: all roles except viewer/projekt
+  // can create entries for future dates (or within 24h). Teamleads bypass the time rule.
+  const isSelfServiceDateEditable = useCallback(dateStr => {
+    if (!dateStr) return false;
+    if (user?.role === 'viewer' || user?.role === 'projekt') return false;
+    if (user?.role === 'teamlead') return true; // Teamleads bypass the 24-hour rule
+
+    const targetDate = new Date(dateStr);
+    targetDate.setHours(23, 59, 59, 999);
+    const cutoff = new Date();
+    cutoff.setHours(cutoff.getHours() - 24);
+    return targetDate >= cutoff;
+  }, [user?.role]);
   // Load data from API
   const loadData = useCallback(async () => {
     try {
@@ -6215,7 +6230,7 @@ const SAPBasisPlanner = () => {
     };
     const handleWeekClick = async mondayISO => {
       // 24-hour rule: prevent edits to past weeks (unless teamlead)
-      if (!isDateEditable(mondayISO)) return;
+      if (!isSelfServiceDateEditable(mondayISO)) return;
       const entry = bereitschaftMap[mondayISO];
       if (entry) {
         // Already claimed — only deletable by own user or teamlead
@@ -6579,21 +6594,22 @@ const SAPBasisPlanner = () => {
       return userColors[idx % userColors.length];
     };
     const handleUrlaubSubmit = async () => {
+      setUrlaubModalError('');
       if (!urlaubModalStart || !urlaubModalEnd) {
-        alert('Bitte Start- und Enddatum angeben.');
+        setUrlaubModalError('Bitte Start- und Enddatum angeben.');
         return;
       }
       if (urlaubModalEnd < urlaubModalStart) {
-        alert('Das Enddatum darf nicht vor dem Startdatum liegen.');
+        setUrlaubModalError('Das Enddatum darf nicht vor dem Startdatum liegen.');
         return;
       }
       // 24-hour rule: prevent creating vacation entries in the past (unless teamlead)
-      if (!isDateEditable(urlaubModalStart)) {
-        alert('Urlaub kann nicht rückwirkend (> 24h) eingetragen werden.');
+      if (!isSelfServiceDateEditable(urlaubModalStart)) {
+        setUrlaubModalError('Urlaub kann nicht rückwirkend (> 24h) eingetragen werden.');
         return;
       }
       if (user?.role === 'teamlead' && !urlaubModalUserId) {
-        alert('Bitte einen Mitarbeiter auswählen.');
+        setUrlaubModalError('Bitte einen Mitarbeiter auswählen.');
         return;
       }
       const targetUserId = urlaubModalUserId ? parseInt(urlaubModalUserId) : user?.id;
@@ -6601,11 +6617,12 @@ const SAPBasisPlanner = () => {
         const entry = await api.addUrlaub(urlaubModalStart, urlaubModalEnd, targetUserId);
         setUrlaub([...urlaub, entry]);
         setUrlaubModal(false);
+        setUrlaubModalError('');
         setUrlaubModalStart('');
         setUrlaubModalEnd('');
         setUrlaubModalUserId(user?.role === 'teamlead' ? '' : String(user?.id));
       } catch (e) {
-        alert(e.message);
+        setUrlaubModalError(e.message);
       }
     };
     const MonthCalendar = ({
@@ -6709,6 +6726,7 @@ const SAPBasisPlanner = () => {
     }), " Akt. Woche")), user?.role !== 'viewer' && /*#__PURE__*/React.createElement("button", {
       onClick: () => {
         setUrlaubModalUserId(user?.role === 'teamlead' ? '' : String(user?.id));
+        setUrlaubModalError('');
         setUrlaubModal(true);
       },
       className: "px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
@@ -6794,10 +6812,17 @@ const SAPBasisPlanner = () => {
       min: urlaubModalStart,
       onChange: e => setUrlaubModalEnd(e.target.value),
       className: "w-full px-3 py-2 border border-gray-300 dark:border-slate-600 dark:bg-slate-700 dark:text-gray-200 rounded-lg text-sm"
-    }))), /*#__PURE__*/React.createElement("div", {
+    }))), urlaubModalError && /*#__PURE__*/React.createElement("div", {
+      className: "mb-4 px-3 py-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300 flex items-start gap-2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "text-red-500 mt-0.5"
+    }, "\u26A0"), /*#__PURE__*/React.createElement("span", null, urlaubModalError)), /*#__PURE__*/React.createElement("div", {
       className: "flex justify-end gap-3"
     }, /*#__PURE__*/React.createElement("button", {
-      onClick: () => setUrlaubModal(false),
+      onClick: () => {
+        setUrlaubModalError('');
+        setUrlaubModal(false);
+      },
       className: "px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
     }, "Abbrechen"), /*#__PURE__*/React.createElement("button", {
       onClick: handleUrlaubSubmit,
