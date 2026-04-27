@@ -1,6 +1,6 @@
 {
     "name": "sap-basis-jahresplaner",
-    "version": "0.2.5",
+    "version": "0.2.6",
     "description": "A high-performance planning tool for SAP Basis teams.",
     "main": "server.js",
     "engines": {

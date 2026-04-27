@@ -601,7 +601,7 @@ class ApiClient {
   }
 }
 const api = new ApiClient();
-const APP_VERSION_FALLBACK = '0.2.5';
+const APP_VERSION_FALLBACK = '0.2.6';
 const bundeslaender = [{
   id: 'BW',
   name: 'Baden-Württemberg'
@@ -884,8 +884,12 @@ const calculateEndDate = (startDateStr, durationDays, year, bundesland, isPRD = 
   // Duration 0 = sub-day activity (time-based), start and end are the same day
   if (durationDays === 0) return startDateStr;
   let current = new Date(startDateStr);
+  // Prevent infinite loop if startDateStr is invalid or missing
+  if (isNaN(current.getTime())) return startDateStr || '';
   let workingDaysCount = 0;
-  while (workingDaysCount < durationDays) {
+  let safetyCounter = 0;
+  while (workingDaysCount < durationDays && safetyCounter < 1000) {
+    safetyCounter++;
     const dateStr = formatDateISO(current);
     const dayOfWeek = current.getDay();
     let isWorkingDay;

@@ -1,6 +1,6 @@
 # SAP Basis Jahresplaner Copyright 2026 Optima Solutions GmbH
 
-Version **0.2.5** — Hochperformantes Multi-User Planungstool mit SQLite-Backend. Optimiert für hohe Last (50+ gleichzeitige Nutzer), unterstützt rollenbasierten Zugriff, bietet eine REST-API mit Brotli-Kompression und automatischer Sitzungswiederherstellung.
+Version **0.2.6** — Hochperformantes Multi-User Planungstool mit SQLite-Backend. Optimiert für hohe Last (50+ gleichzeitige Nutzer), unterstützt rollenbasierten Zugriff, bietet eine REST-API mit Brotli-Kompression und automatischer Sitzungswiederherstellung.
 
 ![SAP Basis Jahresplaner Screenshot](screenshot.png)
 
@@ -89,7 +89,8 @@ Planung mit DB/
 * **Erweiterte Benutzerverwaltung:** Administratoren können nun *Viewer* und *Projekt-User* verwalten. Teamleiter können andere Teamleiter verwalten (System-Teamleiter ist geschützt).
 * **Urlaubsplanung:** Integriertes Modul zur Erfassung und Anzeige von Urlaubszeiten. Die Ansicht ist auf einen fokussierten **14-Monats-Viewport** (Dezember des Vorjahres bis Januar des Folgejahres) optimiert und verfügt über einen unabhängigen Jahreswähler.
 * **Bereitschaftsplanung:** Tab zur Verwaltung wöchentlicher Bereitschaften mit eigenem **14-Monats-Viewport**.
-* **Bugfixes & Stabilität (v0.2.5):**
+* **Bugfixes & Stabilität (v0.2.6):**
+    * **Infinite Loop Fix:** Ein Fehler wurde behoben, bei dem ungültige Startdaten in der Datenbank (z.B. durch alte Importe) den Browser im Gantt-Chart einfrieren ließen (ewiges "Laden...").
     * **Kubernetes/Proxy Support:** Neue Umgebungsvariablen `TRUST_PROXY=1` und `NO_COMPRESSION=1` verhindern Endlos-Ladeschleifen hinter Ingress-Controllern.
     * **Robustes Fehlerhandling:** Fehlgeschlagene API-Aufrufe (z.B. durch Proxy-Timeouts) fangen sich sauber ab, ohne die gesamte App einzufrieren. Fehler bei der Urlaubseingabe werden nun inline im Modal angezeigt.
     * **Sicheres Logging:** Sensible Daten (Passwörter) werden im Frontend-Console-Log automatisch maskiert (`***`).
